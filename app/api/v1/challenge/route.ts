@@ -1,7 +1,7 @@
+import { signChallenge } from "@/lib/jwt";
+import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { signChallenge } from "@/lib/jwt";
-import { redisClient } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {

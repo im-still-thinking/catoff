@@ -1,6 +1,6 @@
-import { NextResponse, NextRequest } from "next/server";
 import { verifyChallenge } from "@/lib/jwt";
-import { redisClient } from "@/lib/db";
+import { redisClient } from "@/lib/redis";
+import { NextRequest, NextResponse } from "next/server";
 import { promisify } from "util";
 
 const getAsync = promisify(redisClient.get).bind(redisClient);

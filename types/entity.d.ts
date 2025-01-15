@@ -41,7 +41,7 @@ type Battle = {
     };
     deckSelection: string,
     team: [
-        
+
     ]
 }
 

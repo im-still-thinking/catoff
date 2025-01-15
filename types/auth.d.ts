@@ -16,3 +16,23 @@ type JWTPayload = {
     iat: number;
     exp: number;
 };
+
+type WalletContextType = {
+    publicKey: PublicKey | null;
+    connected: boolean;
+    connect: () => Promise<void | PublicKey>;
+    disconnect: () => Promise<void>;
+    sendTransaction: (instruction: TransactionInstruction) => Promise<string>;
+    isPhantomInstalled: boolean;
+}
+
+type WalletAuthContextType = {
+  token: string | null;
+  isAuthenticated: boolean;
+  authenticateWallet: (publicKey: PublicKey) => Promise<void>;
+  logout: () => void;
+}
+
+type WalletAuthProviderProps = {
+    children: ReactNode;
+}

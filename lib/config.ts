@@ -7,3 +7,4 @@ export const secrets = {
     SOLANA_RPC_URL: process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
     JWT_SECRET: process.env.JWT_SECRET
 }
+
