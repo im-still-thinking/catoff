@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { WalletProvider } from "@/contexts/WalletContext";
 import { WalletAuthProvider } from "@/contexts/WalletAuthContext";
-// import WalletButton from "@/components/WalletButton";
 
 // const geistSans = Geist({
 //   variable: "--font-geist-sans",
@@ -16,7 +15,7 @@ import { WalletAuthProvider } from "@/contexts/WalletAuthContext";
 // });
 
 export const metadata: Metadata = {
-  title: "Clash Royale 1ON1",
+  title: "Clash Royale 1 ON 1",
   description: "An app where you challenge your friends to 1 on 1 Clash Royale Battles with a twist!",
 };
 
@@ -28,7 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <body className="min-h-screen bg-gray-100">
             <header className="p-4 bg-white shadow-md flex justify-between items-center">
               <h1 className="text-lg font-bold text-black">Clash Royale 1 On 1</h1>
-              {/* <WalletButton /> */}
             </header>
             <main>{children}</main>
           </body>

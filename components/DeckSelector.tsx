@@ -3,11 +3,6 @@
 import { useState } from 'react';
 import Image from 'next/image';
 
-interface DeckSelectorProps {
-  cards: Card[];
-  onSelect: (deck: Card[]) => void;
-}
-
 export default function DeckSelector({ cards, onSelect }: DeckSelectorProps) {
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [searchTerm, setSearchTerm] = useState('');

@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { localAPIClient } from "@/adapters/xhr";
+import { useRouter } from 'next/navigation';
 
 export default function ChallengeStatus() {
+    const router = useRouter();
     const { id } = useParams();
     const searchParams = useSearchParams();
     const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -26,14 +28,11 @@ export default function ChallengeStatus() {
             } catch (error) {
                 console.error('Error fetching status:', error);
             } finally {
-                console.log("hi")
                 setLoading(false);
             }
         };
 
         fetchStatus();
-        const interval = setInterval(fetchStatus, 10000);
-        return () => clearInterval(interval);
     }, [id, searchParams]);
 
     const handleResolve = async () => {
@@ -49,8 +48,12 @@ export default function ChallengeStatus() {
             );
 
             if (res.status === 200) {
-                setChallenge(res.data.challenge);
-            }
+                // alert(res.data)
+                // router.push(`/challenge/${challenge.id}/status?token=${encodeURIComponent(res.data.token)}`);
+                router.replace(`/challenge/${challenge.id}/status?token=${encodeURIComponent(res.data.token)}`);
+              } else {
+                alert("Failed to resolve the challenge.");
+              }
         } catch (error) {
             console.error('Error resolving challenge:', error);
         }
@@ -71,7 +74,7 @@ export default function ChallengeStatus() {
                         <p className='text-black'>Challengee: {challenge.playerB?.tag}</p>
                         <p className='text-black'>Wager Amount: {challenge.wagerAmount} SOL</p>
                         <p className='text-black'>Status: {challenge.status}</p>
-                        {challenge.winner && <p>Winner: {challenge.winner}</p>}
+                        {challenge.winner && <p className='text-black'>Winner: {challenge.winner}</p>}
                     </div>
 
                     {challenge.status === 'accepted' && (

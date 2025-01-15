@@ -7,7 +7,7 @@ import { localAPIClient } from "@/adapters/xhr";
 
 export default function CreateChallenge() {
   const [playerTag, setPlayerTag] = useState("");
-  const [playerData, setPlayerData] = useState<PlayerDTO | null>(null);
+  const [playerData, setPlayerData] = useState<Player | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
   const [wagerAmount, setWagerAmount] = useState("0");
   const [shareableLink, setShareableLink] = useState<string | null>(null);
@@ -40,6 +40,10 @@ export default function CreateChallenge() {
       alert("Please enter a player tag");
       return;
     }
+    if(playerTag.trim().indexOf('#') === 0){
+      setPlayerTag(playerTag.substring(1).trim())
+      await fetchPlayerData(playerTag.substring(1).trim());
+    }
     await fetchPlayerData(playerTag.trim());
   };
 
@@ -62,14 +66,6 @@ export default function CreateChallenge() {
     }
 
     try {
-      
-      console.log("Submitting challenge with:", {
-        playerTag: playerTag.trim(),
-        deck: selectedDeck,
-        wagerAmount: parseFloat(wagerAmount),
-        publicKey,
-      });
-
       const response = await localAPIClient.post("/challenge", {
         playerTag: playerTag.trim(),
         deck: selectedDeck,

@@ -13,6 +13,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "axios": "^1.7.9",
     "bs58": "^6.0.0",
+    "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.3",
     "next": "15.1.4",
@@ -23,7 +24,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@types/node": "^20",
+    "@types/node": "^20.17.13",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

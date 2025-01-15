@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
     try {
         await clashRoyaleAPIClient.get(
-            `/players/%23${encodeURIComponent(playerTag!)}`,
+            `/players/%23${encodeURIComponent(playerTag!)}/battlelog`,
         );
 
         return NextResponse.json(
@@ -17,9 +17,9 @@ export async function GET(request: Request) {
             { status: 200 },
         );
     } catch (error) {
-        console.error("Player Fetch Error", error);
+        console.error("Player Battle Log Error", error);
         return NextResponse.json(
-            { error: "Player Information Fetch Failed" },
+            { error: "Player Battle Log Fetch Failed" },
             { status: 500 },
         );
     }

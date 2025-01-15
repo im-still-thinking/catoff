@@ -13,7 +13,7 @@ interface AcceptChallengeFormProps {
 
 export default function AcceptChallengeForm({ challenge, token }: AcceptChallengeFormProps) {
   const [playerTag, setPlayerTag] = useState("");
-  const [playerData, setPlayerData] = useState<PlayerDTO | null>(null);
+  const [playerData, setPlayerData] = useState<Player | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
   const router = useRouter();
   const { publicKey, connect } = useWallet();
@@ -63,7 +63,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       });
 
       if (response.status === 200) {
-        router.push(`/challenge/${challenge.id}/status?token=${encodeURIComponent(token)}`);
+        router.push(`/challenge/${challenge.id}/status?token=${encodeURIComponent(response.data.token)}`);
       } else {
         alert("Failed to accept the challenge.");
       }

@@ -11,11 +11,10 @@ type Card = {
     iconUrls: {
         evolutionMeidum?: string;
         medium: string;
-    }
-  };
-  
+    };
+};
 
-type PlayerDTO = {
+type Player = {
     tag: string | null;
     name: string | null;
     clan: string | null;
@@ -28,60 +27,59 @@ type PlayerDTO = {
     currentFavouriteCard: string | null;
 };
 
-type ChallengeStatus = 'created' | 'accepted' | 'resolved' | 'declined';
+type Battle = {
+    type: string;
+    battleTime: string,
+    isLadderTournament: boolean,
+    arena: {
+        id: number,
+        name: string
+    };
+    gameMode: {
+        id: number,
+        name: string,
+    };
+    deckSelection: string,
+    team: [
+        
+    ]
+}
 
-// type PlayerDeck = {
-//     cards: Card[];
-//     verified: boolean;
-// };
+type ChallengeStatus = "created" | "accepted" | "resolved" | "declined";
+
+type jwtStatus = "valid" | "invalid"
 
 type Challenge = {
-    id: Types.ObjectId | string,
+    id: Types.ObjectId | string;
+    jwtStatus: jwtStatus
     playerA: {
-        tag: string,
-        wallet: string,
-        deck: Card[],
-    },
+        tag: string;
+        wallet: string;
+        deck: Card[];
+    };
     playerB?: {
-        tag: string,
-        wallet: string,
-        deck: Card[],
-    },
-    wagerAmount: number,
-    status: challengeStatus,
-    winner?: Types.ObjectId | null,
+        tag: string;
+        wallet: string;
+        deck: Card[];
+    };
+    wagerAmount: number;
+    status: challengeStatus;
+    winner?: Types.ObjectId | null;
     // proofData: string | null,
-    createdAt: Date,
-    updatedAt?: Date,
-    expiresAt: Date,
-    exp?: number
+    createdAt: Date;
+    updatedAt?: Date;
+    expiresAt: Date;
+    exp?: number;
 };
 
-type CreateChallengeDTO = {
-    playerA: {
-        id: Types.ObjectId | string,
-        deck: PlayerDeck,
-    },
-    playerB: null,
-    wagerAmount: number,
-    status: challengeStatus,
-    winner: Types.ObjectId | null,
-    proofData: string | null,
+type DeckSelectorProps = {
+    cards: Card[];
+    onSelect: (deck: Card[]) => void;
 };
 
-type ChallengeDTO = {
-    playerA: {
-        id: Types.ObjectId | string,
-        deck: PlayerDeck,
-    },
-    playerB: {
-        id: Types.ObjectId | string,
-        deck: PlayerDeck,
-    } | null,
-    wagerAmount: number,
-    status: challengeStatus,
-    winner: Types.ObjectId | null,
-    proofData: string | null,
-    createdAt: Date,
-    updatedAt: Date,
+type CreateChallengeRequest = {
+    playerTag: string;
+    deck: Card[];
+    wagerAmount: number;
+    publicKey: string;
 };

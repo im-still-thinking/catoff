@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { signChallenge } from "@/lib/jwt";
-
-interface CreateChallengeRequest {
-  playerTag: string;
-  deck: Card[];
-  wagerAmount: number;
-  publicKey: string;
-}
+import { redisClient } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,6 +52,7 @@ export async function POST(req: NextRequest) {
 
     const challenge: Challenge = {
       id: uuidv4(),
+      jwtStatus: "valid",
       playerA: {
         tag: playerTag,
         wallet: publicKey,
@@ -70,6 +65,10 @@ export async function POST(req: NextRequest) {
     };
 
     const token = signChallenge(challenge);
+
+    const ttlSeconds = 24 * 60 * 60;
+
+    await redisClient.set(challenge.id, token, 'EX', ttlSeconds);
 
     return NextResponse.json(
       { 
