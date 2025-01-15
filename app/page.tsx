@@ -1,101 +1,172 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import { useWallet } from "@/hooks/useWallet";
+import DeckSelector from "@/components/DeckSelector";
+import { localAPIClient } from "@/adapters/xhr";
+
+export default function CreateChallenge() {
+  const [playerTag, setPlayerTag] = useState("");
+  const [playerData, setPlayerData] = useState<PlayerDTO | null>(null);
+  const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
+  const [wagerAmount, setWagerAmount] = useState("0");
+  const [shareableLink, setShareableLink] = useState<string | null>(null);
+  const { publicKey, connect } = useWallet();
+
+  useEffect(() => {
+    if (publicKey && playerTag && !playerData) {
+      fetchPlayerData(playerTag.trim());
+    }
+  }, [publicKey, playerData, playerTag]);
+
+  const fetchPlayerData = async (tag: string) => {
+    if (!tag) return;
+
+    try {
+      const response = await localAPIClient.get(`/proxy/crPlayerInfo/?tag=${encodeURIComponent(tag)}`);
+      if (response.status !== 200) {
+        throw new Error("Failed to fetch player data");
+      }
+      setPlayerData(response.data);
+    } catch (error) {
+      console.error("Error fetching player data:", error);
+      alert("Invalid player tag or unable to fetch data. Please try again.");
+    }
+  };
+
+  const handleTagSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!playerTag.trim()) {
+      alert("Please enter a player tag");
+      return;
+    }
+    await fetchPlayerData(playerTag.trim());
+  };
+
+  const handleChallengeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!playerTag.trim()) {
+      alert("Player tag is required");
+      return;
+    }
+
+    if (!selectedDeck || selectedDeck.length !== 8) {
+      alert("Please select exactly 8 cards for your deck");
+      return;
+    }
+
+    if (!publicKey) {
+      alert("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      
+      console.log("Submitting challenge with:", {
+        playerTag: playerTag.trim(),
+        deck: selectedDeck,
+        wagerAmount: parseFloat(wagerAmount),
+        publicKey,
+      });
+
+      const response = await localAPIClient.post("/challenge", {
+        playerTag: playerTag.trim(),
+        deck: selectedDeck,
+        wagerAmount: parseFloat(wagerAmount),
+        publicKey: publicKey.toBase58(),
+      });
+
+      if (response.status === 201) {
+        const { challengeId, token } = response.data;
+        const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+        const link = `${baseUrl}/challenge/${challengeId}/?token=${encodeURIComponent(token)}`;
+        setShareableLink(link);
+      } else {
+        throw new Error("Failed to create challenge");
+      }
+    } catch (error) {
+      console.error("Failed to create challenge:", error);
+      alert("An error occurred while creating the challenge. Please try again.");
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="max-w-4xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4 text-black">Create Challenge</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+      {!publicKey ? (
+        <button
+          type="button"
+          onClick={() => connect()}
+          className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors"
+        >
+          Connect Wallet
+        </button>
+      ) : !playerData ? (
+        <form onSubmit={handleTagSubmit} className="space-y-4">
+          <div>
+            <label className="block mb-2 text-black">Player Tag</label>
+            <input
+              type="text"
+              value={playerTag}
+              onChange={(e) => setPlayerTag(e.target.value)}
+              placeholder="#XXXXXX"
+              className="w-full p-2 border rounded text-black"
+              required
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition-colors"
           >
-            Read our docs
-          </a>
+            Fetch Player Data
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleChallengeSubmit} className="space-y-6">
+          <div className="bg-white p-4 rounded-lg shadow">
+            <DeckSelector cards={playerData.cards} onSelect={setSelectedDeck} />
+          </div>
+          <div>
+            <label className="block mb-2 text-black">Wager Amount (SOL)</label>
+            <input
+              type="number"
+              value={wagerAmount}
+              onChange={(e) => setWagerAmount(e.target.value)}
+              min="0"
+              step="0.1"
+              className="w-full p-2 border rounded text-black"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={selectedDeck.length !== 8}
+            className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            Create Challenge
+          </button>
+        </form>
+      )}
+
+      {shareableLink && (
+        <div className="mt-4 bg-gray-100 p-4 rounded">
+          <p className="text-black mb-2">Share this link with your opponent:</p>
+          <input
+            type="text"
+            value={shareableLink}
+            readOnly
+            className="w-full p-2 border rounded text-black bg-gray-200"
+          />
+          <button
+            onClick={() => navigator.clipboard.writeText(shareableLink)}
+            className="mt-2 w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors"
+          >
+            Copy Link
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
   );
 }
