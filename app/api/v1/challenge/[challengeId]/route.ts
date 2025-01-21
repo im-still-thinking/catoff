@@ -1,9 +1,7 @@
 import { verifyChallenge } from "@/lib/jwt";
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
-import { promisify } from "util";
 
-const getAsync = promisify(redisClient.hget).bind(redisClient);
 
 export async function GET(
     req: NextRequest,
@@ -12,7 +10,7 @@ export async function GET(
         const url = new URL(req.url);
         const challengeId = req.nextUrl.pathname.split("/")[4];
         const type = url.searchParams.get('type');
-        const token = await getAsync(`${challengeId}`, `${type}`);
+        const token = await redisClient.hget(`${challengeId}`, `${type}`);
 
         if (!token || typeof token !== "string") {
             return NextResponse.json({ error: "Token is Invalid!" }, {

@@ -4,7 +4,6 @@ import { signChallenge, verifyChallenge } from "@/lib/jwt";
 
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
-import { promisify } from "util";
 import { SolanaEscrow } from "@/lib/solana/escrow";
 import {
   PublicKey,
@@ -40,8 +39,6 @@ const compareCards = (
 
 let challenge: any;
 
-const getAsync = promisify(redisClient.hget).bind(redisClient);
-
 export async function POST(req: NextRequest) {
   try {
     let winner;
@@ -49,7 +46,7 @@ export async function POST(req: NextRequest) {
     challenge = verifyChallenge(token);
 
     // Basic validation
-    const result = await getAsync(`${challenge.id}`, "accepted");
+    const result = await redisClient.hget(`${challenge.id}`, "accepted");
     if (!result || result !== token || challenge.status !== "accepted") {
       return NextResponse.json(
         { error: "Invalid challenge state" },

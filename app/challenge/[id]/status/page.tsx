@@ -57,7 +57,7 @@ export default function ChallengeStatus() {
             }
         } catch (error: any) {
             console.error('Error resolving challenge:', error);
-            alert(error.response?.data?.error || "Failed to resolve the challenge. Please try again.");
+            alert(error.response?.data?.error.message || "Failed to resolve the challenge. Please try again.");
         } finally {
             setIsProcessing(false);
         }
