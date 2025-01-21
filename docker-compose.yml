@@ -1,0 +1,42 @@
+services:
+  app-prod:
+    image: ${DOCKER_REGISTRY:-imstillthinking}/catoff-clash-royale-prod:${TAG:-latest}
+    build:
+      context: .
+      target: runner
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: catoff-clash-royale-prod
+    restart: unless-stopped
+    ports:
+      - "${PROD_PORT:-127.0.0.1:3000}:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env.production
+    volumes:
+      - ./.env.production:/app/.env.production.local:ro
+    profiles: 
+      - prod
+
+  app-dev:
+    image: ${DOCKER_REGISTRY:-imstillthinking}/catoff-clash-royale-dev:${TAG:-latest}
+    build:
+      context: .
+      target: runner
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: catoff-clash-royale-dev
+    restart: unless-stopped
+    ports:
+      - "${DEV_PORT:-127.0.0.1:3002}:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env.development
+    volumes:
+      - ./.env.development:/app/.env.development.local:ro
+    profiles: 
+      - dev
