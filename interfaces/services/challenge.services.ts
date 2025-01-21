@@ -70,6 +70,9 @@ export class ChallengeService {
     type: string;
   }) {
     try {
+      console.debug("challengeid", params.challengeId)
+      console.debug("challengeid", params.type)
+
       const token = await this.redisClient.hget(
         `${params.challengeId}`,
         `${params.type}`,
