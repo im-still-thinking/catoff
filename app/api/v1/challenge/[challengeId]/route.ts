@@ -12,7 +12,7 @@ export async function GET(
         const url = new URL(req.url);
         const challengeId = req.nextUrl.pathname.split("/")[4];
         const type = url.searchParams.get('type');
-        const token = await getAsync(`${challengeId}:challengeToken`, `${type}`);
+        const token = await getAsync(`${challengeId}`, `${type}`);
 
         if (!token || typeof token !== "string") {
             return NextResponse.json({ error: "Token is Invalid!" }, {

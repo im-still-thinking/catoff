@@ -37,7 +37,7 @@ export class ChallengeService {
 
       const token = signChallenge(challenge);
       await this.redisClient.hmset(
-        `${params.challengeId}:challengeToken`,
+        `${params.challengeId}`,
         "created",
         token,
       );
@@ -49,7 +49,7 @@ export class ChallengeService {
       };
     } catch (error) {
       await this.redisClient.hdel(
-        `${params.challengeId}:challengeToken`,
+        `${params.challengeId}`,
         "created",
       );
       throw error;

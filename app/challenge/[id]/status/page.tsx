@@ -20,7 +20,7 @@ export default function ChallengeStatus() {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const res = await localAPIClient.get(`/challenge/${id}`, {});
+                const res = await localAPIClient.get(`/challenge/${id}?type=accepted`, {});
                 setChallenge(res.data.challenge);
                 setToken(res.data.token);
             } catch (error) {

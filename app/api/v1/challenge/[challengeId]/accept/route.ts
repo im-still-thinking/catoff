@@ -3,11 +3,10 @@
 import { signChallenge, verifyChallenge } from "@/lib/jwt";
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
-import { promisify } from "util";
 import { SolanaEscrow } from "@/lib/solana/escrow";
 import { getSolanaConnection } from "@/lib/solana/connection";
 
-const getAsync = promisify(redisClient.hget).bind(redisClient);
+
 
 let challenge: any
 
@@ -19,7 +18,7 @@ export async function POST(
 
     challenge = verifyChallenge(token);
 
-    const result = await getAsync(`${challenge.id}:challengeToken`, "created");
+    const result = await redisClient.hget(`${challenge.id}`, "created");
 
     if (!result) {
       return NextResponse.json(
@@ -104,7 +103,7 @@ export async function POST(
 
     const ttlSeconds = 24 * 60 * 60;
 
-    await redisClient.hmset(`${challenge.id}:challengeToken`, "accepted", newToken);
+    await redisClient.hmset(`${challenge.id}`, "accepted", newToken);
     await redisClient.expire(challenge.id, ttlSeconds);
 
     return NextResponse.json(
@@ -117,7 +116,7 @@ export async function POST(
     );
   } catch (error) {
     console.error("Error accepting challenge:", error);
-    await redisClient.hdel(`${challenge.id}:challengeToken`, "accepted");
+    await redisClient.hdel(`${challenge.id}`, "accepted");
     return NextResponse.json(
       {
         error: "Failed to accept challenge",

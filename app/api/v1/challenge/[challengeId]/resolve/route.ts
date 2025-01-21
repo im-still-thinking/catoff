@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     challenge = verifyChallenge(token);
 
     // Basic validation
-    const result = await getAsync(`${challenge.id}:challengeToken`, "accepted");
+    const result = await getAsync(`${challenge.id}`, "accepted");
     if (!result || result !== token || challenge.status !== "accepted") {
       return NextResponse.json(
         { error: "Invalid challenge state" },
@@ -70,23 +70,6 @@ export async function POST(req: NextRequest) {
     );
 
     const latestFriendlyBattle = response.data.find((battle: any) => {
-      console.log(
-        "playerACardsCompare",
-        compareCards(
-          battle.team[0].cards,
-          challenge.playerA.deck,
-          ["name", "id"],
-        ),
-      );
-
-      console.log(
-        "playerBCardsCompare",
-        compareCards(
-          battle.opponent[0].cards,
-          challenge.playerB?.deck as Card[],
-          ["name", "id"],
-        ),
-      );
 
       return battle.type === "friendly" &&
         battle.gameMode.name === "Friendly" &&
@@ -229,7 +212,7 @@ export async function POST(req: NextRequest) {
     const newToken = signChallenge(challengeWithoutExp);
 
     await redisClient.hmset(
-      `${challenge.id}:challengeToken`,
+      `${challenge.id}`,
       "resolved",
       newToken,
     );
@@ -241,7 +224,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error resolving challenge:", error);
-    await redisClient.hdel(`${challenge.id}:challengeToken`, "resolved");
+    await redisClient.hdel(`${challenge.id}`, "resolved");
     return NextResponse.json(
       { error: "Failed to resolve challenge" },
       { status: 500 },

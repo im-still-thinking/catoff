@@ -3,12 +3,10 @@
 import { signChallenge, verifyChallenge } from "@/lib/jwt";
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
-import { promisify } from "util";
 import { SolanaEscrow } from "@/lib/solana/escrow";
 import { PublicKey, sendAndConfirmTransaction } from "@solana/web3.js";
 import { getSolanaConnection } from "@/lib/solana/connection";
 
-const getAsync = promisify(redisClient.hget).bind(redisClient);
 
 let challenge: any
 
@@ -18,7 +16,7 @@ export async function POST(req: NextRequest) {
     challenge = verifyChallenge(token);
 
     // Basic validation
-    const result = await getAsync(`${challenge.id}:challengeToken`, "created");
+    const result = await redisClient.hget(`${challenge.id}`, "created");
     if (!result || result !== token || challenge.status !== "created") {
       return NextResponse.json(
         { error: "Invalid challenge state" },
@@ -70,7 +68,7 @@ export async function POST(req: NextRequest) {
     const { exp, ...challengeWithoutExp } = declinedChallenge; // eslint-disable-line @typescript-eslint/no-unused-vars
     const newToken = signChallenge(challengeWithoutExp);
 
-    await redisClient.hmset(`${challenge.id}:challengeToken`, "declined", newToken);
+    await redisClient.hmset(`${challenge.id}`, "declined", newToken);
     await redisClient.expire(challenge.id, 24 * 60 * 60);
 
     return NextResponse.json({
@@ -80,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error("Error declining challenge:", error);
-    await redisClient.hdel(`${challenge.id}:challengeToken`, "declined");
+    await redisClient.hdel(`${challenge.id}`, "declined");
     return NextResponse.json(
       { error: "Failed to decline challenge" },
       { status: 500 }
