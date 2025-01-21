@@ -31,7 +31,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <WalletProvider>
       <WalletAuthProvider>
         <html lang="en" className={supercellMagic.variable}>
-          <body className="mx-auto w-screen min-h-screen bg-repeat-y" style={{ backgroundImage: 'url("/assets/crbg1.png")' }}>
+          <body 
+            className="mx-auto w-screen min-h-screen bg-cover bg-center bg-no-repeat" 
+            style={{ backgroundImage: 'url("/assets/crbg1.png")' }}
+          >
             <header className="p-4 bg-white/20 w-fit mx-auto px-10 rounded-b-xl border-l-[1px] border-l-white/50 backdrop-blur-sm shadow-md flex justify-between items-center">
               <div className="flex justify-center w-full">
                 <Image 

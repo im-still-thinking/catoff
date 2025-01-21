@@ -21,6 +21,8 @@ export default function DeckSelector({ cards, onSelect }: DeckSelectorProps) {
     }
   };
 
+  
+
   const filteredCards = cards.filter(card => 
     card.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -58,9 +60,9 @@ export default function DeckSelector({ cards, onSelect }: DeckSelectorProps) {
           <button
             key={card.id}
             onClick={() => handleCardSelect(card)}
+            type="button"
             disabled={selectedCards.length >= 8 && !selectedCards.some(selected => selected.id === card.id)}
-            
-            className={` group
+            className={`group
               backdrop-blur-sm w-full h-full rounded-xl border-t-[1px] border-l-[1px] border-t-white/50 border-l-white/50 shadow-sm shadow-black p-4 
               ${getRarityColor(card.rarity)}
               ${selectedCards.some(selected => selected.id === card.id)
@@ -112,6 +114,7 @@ export default function DeckSelector({ cards, onSelect }: DeckSelectorProps) {
                   />
                   <button
                     onClick={() => handleCardSelect(card)}
+                    type="button"
                     className="absolute top-1/2 left-1/2 bg-red-800/50 shadow-sm shadow-black border-t-[1px] border-l-[1px] border-white/80 backdrop-blur-sm -translate-x-1/2 -translate-y-1/2 text-xl text-white w-12 h-12 rounded-full 
                             flex items-center justify-center opacity-0 group-hover:opacity-100 
                             transition-opacity"

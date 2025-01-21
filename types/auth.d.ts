@@ -22,8 +22,9 @@ type WalletContextType = {
     connected: boolean;
     connect: () => Promise<void | PublicKey>;
     disconnect: () => Promise<void>;
-    sendTransaction: (instruction: TransactionInstruction) => Promise<string>;
+    sendTransaction: (instruction: Transaction | TransactionInstruction) => Promise<string>;
     isPhantomInstalled: boolean;
+    connection: Connection;
 }
 
 type WalletAuthContextType = {

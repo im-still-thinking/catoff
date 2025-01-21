@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { NextResponse } from "next/server";
 import { clashRoyaleAPIClient } from "@/adapters/xhr";
 
@@ -25,8 +27,8 @@ export async function GET(request: Request) {
             },
             { status: 200 },
         );
-    } catch (error) {
-        console.error("Player Fetch Error", error);
+    } catch (error: any) {
+        console.error("Player Fetch Error", error.message);
         return NextResponse.json(
             { error: "Player Information Fetch Failed" },
             { status: 500 },

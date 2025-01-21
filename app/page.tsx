@@ -1,9 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client";
 
-import { useState } from "react";
-import { useWallet } from "@/hooks/useWallet";
-import DeckSelector from "@/components/DeckSelector";
 import { localAPIClient } from "@/adapters/xhr";
+import DeckSelector from "@/components/DeckSelector";
+import { useWallet } from "@/hooks/useWallet";
+import { SolanaEscrow } from "@/lib/solana/escrow";
+import { Transaction } from "@solana/web3.js";
+import { useState } from "react";
+
+const MAX_RETRIES = 3;
+const CONFIRMATION_TIMEOUT = 30000;
 
 export default function CreateChallenge() {
   const [playerTag, setPlayerTag] = useState("");
@@ -11,7 +18,8 @@ export default function CreateChallenge() {
   const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
   const [wagerAmount, setWagerAmount] = useState("0");
   const [shareableLink, setShareableLink] = useState<string | null>(null);
-  const { publicKey, connect } = useWallet();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { publicKey, connect, connection, sendTransaction } = useWallet();
 
   const fetchPlayerData = async (tag: string) => {
     if (!tag) return;
@@ -34,57 +42,165 @@ export default function CreateChallenge() {
       alert("Please enter a player tag");
       return;
     }
-    if(playerTag.trim().indexOf('#') === 0){
+    if (playerTag.trim().indexOf('#') === 0) {
       setPlayerTag(playerTag.substring(1).trim())
       await fetchPlayerData(playerTag.substring(1).trim());
     }
     await fetchPlayerData(playerTag.trim());
   };
 
+  const waitForTransactionConfirmation = async (signature: string): Promise<boolean> => {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < CONFIRMATION_TIMEOUT) {
+      const status = await connection.getSignatureStatus(signature);
+
+      if (status?.value?.err) {
+        console.error("Transaction failed:", status.value.err);
+        return false;
+      }
+
+      if (status?.value?.confirmationStatus === "finalized") {
+        return true;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    throw new Error("Transaction confirmation timeout");
+  };
+
+  const createEscrow = async (): Promise<any> => {
+    try {
+      const response = await localAPIClient.post("/challenge/escrow", {
+        publicKey: publicKey.toBase58()
+      });
+
+      if (response.status === 201) {
+        const { serializedInitTx, challengeId, escrowPubkey } = response.data
+
+        const initTransaction = Transaction.from(Buffer.from(serializedInitTx, "base64"));
+
+        let retries = 0
+        let signature: string | null = null;
+
+        while (retries < MAX_RETRIES && !signature) {
+          try {
+            signature = await sendTransaction(initTransaction);
+
+            const latestBlockhash = await connection.getLatestBlockhash();
+            const confirmation = await connection.confirmTransaction(
+              {
+                signature,
+                blockhash: latestBlockhash.blockhash,
+                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+              },
+              "confirmed"
+            );
+
+            if (confirmation.value.err) {
+              throw new Error(`Transaction failed: ${confirmation.value.err}`);
+            }
+          } catch (error: any) {
+            if (error.message?.includes("block height exceeded")) {
+              console.warn("Blockhash expired. Refreshing...");
+              const latestBlockhash = await connection.getLatestBlockhash();
+              initTransaction.recentBlockhash = latestBlockhash.blockhash;
+            }
+
+            retries++;
+            if (retries === MAX_RETRIES) {
+              throw new Error(`Transaction failed after multiple attempts`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+
+        if (!signature) throw new Error("Failed to sign escrow creation transaction");
+
+        return { challengeId, escrowPubkey }
+      }
+    }
+    catch (error) {
+      console.error(error)
+    }
+  }
+
+  const setWager = async (
+    challengeId: string,
+  ): Promise<any> => {
+
+    const escrow = await SolanaEscrow.getEscrowForChallenge(challengeId, connection);
+    if (!escrow) throw new Error(`Escrow for challenge ${challengeId} not found`);
+
+    let signature: string | null = null;
+    let retries = 0;
+
+    while (retries < MAX_RETRIES && !signature) {
+      try {
+        const depositInstruction = await escrow.depositToEscrow(parseFloat(wagerAmount), publicKey!);
+        signature = await sendTransaction(depositInstruction);
+
+        const isConfirmed = await waitForTransactionConfirmation(signature);
+
+        if (!isConfirmed) {
+          throw new Error("Transaction failed to confirm");
+        }
+      } catch (error) {
+        console.error(`Deposit attempt ${retries + 1} failed:`, error);
+        retries++;
+        if (retries === MAX_RETRIES) {
+          throw new Error(`Deposit failed after ${MAX_RETRIES} attempts`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+
+    if (!signature) throw new Error("Failed to sign wager set transaction");
+
+    console.debug("Wager transaction signature", signature)
+  };
+
   const handleChallengeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!playerTag.trim()) {
-      alert("Player tag is required");
-      return;
-    }
-
-    if (!selectedDeck || selectedDeck.length !== 8) {
-      alert("Please select exactly 8 cards for your deck");
-      return;
-    }
-
-    if (!publicKey) {
+    if (!publicKey || !connection || !sendTransaction) {
       alert("Please connect your wallet first");
       return;
     }
 
+    setIsProcessing(true);
+
     try {
+      const { challengeId, escrowPubkey } = await createEscrow()
+      await setWager(challengeId)
+
       const response = await localAPIClient.post("/challenge", {
         playerTag: playerTag.trim(),
         deck: selectedDeck,
         wagerAmount: parseFloat(wagerAmount),
         publicKey: publicKey.toBase58(),
+        challengeId: challengeId,
+        escrowPubkey: escrowPubkey,
       });
 
       if (response.status === 201) {
-        const { challengeId, token } = response.data;
+        const { challengeId } = response.data;
         const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-        const link = `${baseUrl}/challenge/${challengeId}/?token=${encodeURIComponent(token)}`;
+        const link = `${baseUrl}/challenge/${challengeId}`;
         setShareableLink(link);
-      } else {
-        throw new Error("Failed to create challenge");
       }
     } catch (error) {
       console.error("Failed to create challenge:", error);
       alert("An error occurred while creating the challenge. Please try again.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <div className="mx-auto p-4 w-screen min-h-screen flex items-center flex-col" >
       <h1 className="text-5xl max-sm:text-3xl my-10 font-bold mb-4 text-white font-supercell text-center">Create Challenge</h1>
-
       {!publicKey ? (
         <button
           type="button"
@@ -126,17 +242,18 @@ export default function CreateChallenge() {
                 value={wagerAmount}
                 onChange={(e) => setWagerAmount(e.target.value)}
                 min="0"
-                step="0.1"
-                className=" text-white w-full outline-white max-sm:w-full bg-white/20 placeholder:text-white px-3 py-2 pt-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent font-supercell text-sm"
+                step="0.01"
+                className="text-white w-full outline-white max-sm:w-full bg-white/20 placeholder:text-white px-3 py-2 pt-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent font-supercell text-sm"
                 required
+                disabled={isProcessing}
               />
             </div>
             <button
               type="submit"
-              disabled={selectedDeck.length !== 8}
+              disabled={selectedDeck.length !== 8 || isProcessing}
               className="w-full mt-2 border-2 border-white rounded-xl font-supercell bg-green-500 text-white p-2 hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              Create Challenge
+              {isProcessing ? "Processing..." : "Create Challenge"}
             </button>
           </form>
         </div>
@@ -174,7 +291,7 @@ export default function CreateChallenge() {
                 </span>
               </button>
               <button
-                onClick={() => setShareableLink('')}
+                onClick={() => setShareableLink(null)}
                 className="flex-1 bg-gray-500 border-2 border-black text-white py-2 pt-3 rounded-lg hover:bg-gray-600 transition-colors font-supercell text-sm"
               >
                 Close

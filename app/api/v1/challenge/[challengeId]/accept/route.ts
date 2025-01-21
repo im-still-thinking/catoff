@@ -2,8 +2,10 @@ import { signChallenge, verifyChallenge } from "@/lib/jwt";
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 import { promisify } from "util";
+import { SolanaEscrow } from "@/lib/solana/escrow";
+import { getSolanaConnection } from "@/lib/solana/connection";
 
-const getAsync = promisify(redisClient.get).bind(redisClient);
+const getAsync = promisify(redisClient.hget).bind(redisClient);
 
 export async function POST(
   req: NextRequest,
@@ -13,7 +15,7 @@ export async function POST(
 
     const challenge = verifyChallenge(token);
 
-    const result = await getAsync(challenge.id);
+    const result = await getAsync(challenge.id, "challengeToken");
 
     if (!result) {
       return NextResponse.json(
@@ -51,6 +53,19 @@ export async function POST(
       );
     }
 
+    const connection = getSolanaConnection("finalized");
+    const escrow = await SolanaEscrow.getEscrowForChallenge(
+      challenge.id,
+      connection,
+    );
+
+    if (!escrow) {
+      return NextResponse.json(
+        { error: "Escrow not found" },
+        { status: 404 },
+      );
+    }
+
     const updatedChallenge = {
       ...challenge,
       playerB: {
@@ -67,12 +82,14 @@ export async function POST(
 
     const ttlSeconds = 24 * 60 * 60;
 
-    await redisClient.set(challenge.id, newToken, 'EX', ttlSeconds);
+    await redisClient.hmset(challenge.id, { "challengeToken": newToken });
+    await redisClient.expire(challenge.id, ttlSeconds);
 
     return NextResponse.json(
       {
         challenge: updatedChallenge,
         token: newToken,
+        escrowPubkey: await escrow.getEscrowPubKey(),
       },
       { status: 200 },
     );
