@@ -17,8 +17,6 @@ export async function GET(
             req,
         );
 
-        console.log("challengeid", challengeId)
-
         const result = await challengeService.getChallenge({
             challengeId,
             type: "created"
