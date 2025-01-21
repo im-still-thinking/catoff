@@ -1,47 +1,66 @@
-import { NextRequest, NextResponse } from "next/server";
-import { signChallenge, verifyChallenge } from "@/lib/jwt";
-import { redisClient } from "@/lib/db";
-import { promisify } from "util";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-const getAsync = promisify(redisClient.get).bind(redisClient);
+import { signChallenge, verifyChallenge } from "@/lib/jwt";
+import { redisClient } from "@/lib/redis";
+import { NextRequest, NextResponse } from "next/server";
+import { promisify } from "util";
+import { SolanaEscrow } from "@/lib/solana/escrow";
+import { PublicKey, sendAndConfirmTransaction } from "@solana/web3.js";
+import { getSolanaConnection } from "@/lib/solana/connection";
+
+const getAsync = promisify(redisClient.hget).bind(redisClient);
+
+let challenge: any
 
 export async function POST(req: NextRequest) {
   try {
     const { token } = await req.json();
-    const challenge = verifyChallenge(token);
+    challenge = verifyChallenge(token);
 
-    const result = await getAsync(challenge.id);
-
-    if (!result) {
+    // Basic validation
+    const result = await getAsync(`${challenge.id}:challengeToken`, "created");
+    if (!result || result !== token || challenge.status !== "created") {
       return NextResponse.json(
-        {
-          error: "No active challenge is found",
-        },
-        { status: 404 },
+        { error: "Invalid challenge state" },
+        { status: 400 }
       );
     }
 
-    if (result !== token) {
-      return NextResponse.json(
-        {
-          error: "Invalid Token",
-        },
-        { status: 403 },
-      );
+    // Get escrow
+    const connection = getSolanaConnection("finalized");
+    const escrow = await SolanaEscrow.getEscrowForChallenge(challenge.id, connection);
+    if (!escrow) {
+      return NextResponse.json({ error: "Escrow not found" }, { status: 404 });
     }
 
-    if (challenge.status !== "created") {
-      return NextResponse.json(
-        {
-          error: "Challenge cannot be declined in the current state",
-        },
-        { status: 400 },
-      );
+    // Check balance and withdraw
+    const escrowAccount = await escrow.getEscrowAccount();
+    const { transaction, closeAccount } = await escrow.withdrawFromEscrow(
+      challenge.wagerAmount,
+      new PublicKey(challenge.playerA.wallet)
+    );
+
+    try {
+      // Attempt the transaction
+      await sendAndConfirmTransaction(connection, transaction, [escrowAccount], {
+        skipPreflight: true,
+        commitment: "confirmed"
+      });
+    } catch (error) {
+      // If transaction failed but account is gone, it means it actually succeeded
+      const accountExists = await connection.getAccountInfo(escrowAccount.publicKey);
+      if (accountExists) {
+        throw error; // Real error, rethrow
+      }
+      // Otherwise continue - transaction succeeded despite the error
     }
 
-    // Future ZK-SNARK integration point:
-    // Generate proof that the decline operation is valid
+    // Clean up and update status
+    if (closeAccount) {
+      await SolanaEscrow.cleanupEscrow(challenge.id);
+    }
 
+    // Update challenge status
     const declinedChallenge = {
       ...challenge,
       status: "declined" as const,
@@ -51,24 +70,20 @@ export async function POST(req: NextRequest) {
     const { exp, ...challengeWithoutExp } = declinedChallenge; // eslint-disable-line @typescript-eslint/no-unused-vars
     const newToken = signChallenge(challengeWithoutExp);
 
-    const ttlSeconds = 24 * 60 * 60;
+    await redisClient.hmset(`${challenge.id}:challengeToken`, "declined", newToken);
+    await redisClient.expire(challenge.id, 24 * 60 * 60);
 
-    await redisClient.set(challenge.id, newToken, 'EX', ttlSeconds);
+    return NextResponse.json({
+      challenge: declinedChallenge,
+      token: newToken
+    });
 
-    return NextResponse.json(
-      {
-        challenge: declinedChallenge,
-        token: newToken,
-      },
-      { status: 200 },
-    );
   } catch (error) {
     console.error("Error declining challenge:", error);
+    await redisClient.hdel(`${challenge.id}:challengeToken`, "declined");
     return NextResponse.json(
-      {
-        error: "Failed to decline challenge",
-      },
-      { status: 500 },
+      { error: "Failed to decline challenge" },
+      { status: 500 }
     );
   }
 }

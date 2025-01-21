@@ -1,17 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client"
 
 import { createContext, ReactNode, useEffect, useState } from 'react';
-import { Connection, PublicKey, TransactionInstruction, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction, Transaction } from '@solana/web3.js';
 import { secrets } from '@/lib/config';
 
-interface WalletContextType {
-  publicKey: PublicKey | null;
-  connected: boolean;
-  connect: () => Promise<void | PublicKey>;
-  disconnect: () => Promise<void>;
-  sendTransaction: (instruction: TransactionInstruction) => Promise<string>;
-  isPhantomInstalled: boolean;
-}
 
 export const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
@@ -103,30 +97,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function sendTransaction(instruction: TransactionInstruction) {
-    if (typeof window === 'undefined') throw new Error('Window is undefined');
+
+  async function sendTransaction(transaction: Transaction | TransactionInstruction) {
+    if (typeof window === "undefined") throw new Error("Window is undefined");
+  
     try {
       const solana = window.solana;
-      if (!solana || !publicKey) throw new Error('Wallet not connected');
-
-      const transaction = new Transaction().add(instruction);
-      transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
-      transaction.feePayer = publicKey;
-
-      const signedTransaction = await solana.signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
-        preflightCommitment: 'confirmed',
-      });
-
-      await connection.confirmTransaction(signature, 'confirmed');
-      return signature;
+      if (!solana || !publicKey) throw new Error("Wallet not connected");
+  
+      if (transaction instanceof TransactionInstruction) {
+        // Handle instruction case
+        const blockhash = await connection.getLatestBlockhash().then((res: any) => res.blockhash);
+        const messageV0 = new TransactionMessage({
+          payerKey: publicKey,
+          recentBlockhash: blockhash,
+          instructions: [transaction],
+        }).compileToV0Message();
+        const transactionV0 = new VersionedTransaction(messageV0);
+        const { signature } = await solana.signAndSendTransaction(transactionV0);
+        return signature;
+      } else {
+        // Handle complete transaction case
+        const { signature } = await solana.signAndSendTransaction(transaction);
+        return signature;
+      }
     } catch (error) {
-      console.error('Transaction error:', error);
+      console.error("Transaction error:", error);
       throw error;
     }
   }
-
-
+  
 
   return (
     <WalletContext.Provider
@@ -137,6 +137,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         disconnect,
         sendTransaction,
         isPhantomInstalled,
+        connection,
       }}
     >
       {children}

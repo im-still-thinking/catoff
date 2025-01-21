@@ -1,30 +1,28 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client"
 
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { localAPIClient } from "@/adapters/xhr";
 import { useRouter } from 'next/navigation';
+import { useWallet } from '@/hooks/useWallet';
 
 export default function ChallengeStatus() {
     const router = useRouter();
     const { id } = useParams();
-    const searchParams = useSearchParams();
+    const [token, setToken] = useState();
     const [challenge, setChallenge] = useState<Challenge | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const { publicKey } = useWallet();
 
     useEffect(() => {
         const fetchStatus = async () => {
-            const token = searchParams.get('token');
-
-            if (!id || !token) return;
-
             try {
-                const res = await localAPIClient.get(`/challenge/${id}`, {
-                    headers: {
-                        'token': token
-                    }
-                });
+                const res = await localAPIClient.get(`/challenge/${id}`, {});
                 setChallenge(res.data.challenge);
+                setToken(res.data.token);
             } catch (error) {
                 console.error('Error fetching status:', error);
             } finally {
@@ -33,34 +31,47 @@ export default function ChallengeStatus() {
         };
 
         fetchStatus();
-    }, [id, searchParams]);
+    }, [id]);
 
     const handleResolve = async () => {
-        const token = searchParams.get('token');
-        if (!challenge || !token) return;
+        if (!publicKey) {
+            alert("Please connect your wallet first.");
+            return;
+        }
+
+        setIsProcessing(true);
 
         try {
             const res = await localAPIClient.post(
-                `/challenge/${challenge.id}/resolve`,
-                {
-                    token: token
-                },
+                `/challenge/${challenge?.id}/resolve`,
+                { 
+                    token,
+                    resolverWallet: publicKey.toString()
+                }
             );
 
             if (res.status === 200) {
-                // alert(res.data)
-                // router.push(`/challenge/${challenge.id}/status?token=${encodeURIComponent(res.data.token)}`);
-                router.replace(`/challenge/${challenge.id}/status?token=${encodeURIComponent(res.data.token)}`);
-              } else {
-                alert("Failed to resolve the challenge.");
-              }
-        } catch (error) {
+                const { challenge: updatedChallenge, token: newToken } = res.data;
+                setChallenge(updatedChallenge);
+                router.replace(`/challenge/${updatedChallenge.id}/status?token=${encodeURIComponent(newToken)}`);
+            }
+        } catch (error: any) {
             console.error('Error resolving challenge:', error);
+            alert(error.response?.data?.error || "Failed to resolve the challenge. Please try again.");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
+    const canResolve = challenge?.status === 'accepted' && 
+                      publicKey?.toString() === challenge?.playerA.wallet;
+
     if (loading) {
-        return <div className='text-black'>Loading...</div>;
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-black font-semibold">Loading challenge status...</div>
+            </div>
+        );
     }
 
     return (
@@ -77,13 +88,28 @@ export default function ChallengeStatus() {
                         {challenge.winner && <p className='text-black'>Winner: {challenge.winner}</p>}
                     </div>
 
-                    {challenge.status === 'accepted' && (
+                    {canResolve ? (
                         <button
                             onClick={handleResolve}
-                            className="w-full bg-green-500 text-white p-2 rounded"
+                            disabled={isProcessing}
+                            className={`w-full font-semibold p-3 rounded-lg transition-colors ${
+                                isProcessing
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-green-500 hover:bg-green-600'
+                            } text-white`}
                         >
-                            Resolve Challenge
+                            {isProcessing ? 'Processing...' : 'Resolve Challenge'}
                         </button>
+                    ) : challenge.status === 'accepted' && (
+                        <p className="text-center text-gray-600">
+                            Only the challenger can resolve this challenge
+                        </p>
+                    )}
+
+                    {isProcessing && (
+                        <div className="text-center text-sm text-gray-600">
+                            Please wait while we process your transaction...
+                        </div>
                     )}
                 </div>
             )}

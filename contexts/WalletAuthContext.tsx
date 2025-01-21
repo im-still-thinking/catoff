@@ -1,23 +1,12 @@
 "use client"
 
-import { createContext, ReactNode, useState, useEffect } from 'react';
+import { createContext, useState, useEffect } from 'react';
 import { useWallet } from '@/hooks/useWallet';
 import { localAPIClient } from '@/adapters/xhr';
 import bs58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';
 
-interface WalletAuthContextType {
-  token: string | null;
-  isAuthenticated: boolean;
-  authenticateWallet: (publicKey: PublicKey) => Promise<void>;
-  logout: () => void;
-}
-
 export const WalletAuthContext = createContext<WalletAuthContextType | undefined>(undefined);
-
-interface WalletAuthProviderProps {
-  children: ReactNode;
-}
 
 export function WalletAuthProvider({ children }: WalletAuthProviderProps) {
   const { connected } = useWallet();
@@ -26,9 +15,7 @@ export function WalletAuthProvider({ children }: WalletAuthProviderProps) {
 
   useEffect(() => {
     const storedToken = localStorage.getItem('walletAuthToken');
-    console.log('Stored token:', storedToken);
-    console.log('Connected:', connected);
-
+    
     if (storedToken && connected) {
       try {
         const payload = JSON.parse(atob(storedToken.split('.')[1]));

@@ -1,161 +1,248 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { NextRequest, NextResponse } from "next/server";
 import { signChallenge, verifyChallenge } from "@/lib/jwt";
-// import { clashRoyaleAPIClient } from "@/adapters/xhr";
-import { redisClient } from "@/lib/db";
+import { redisClient } from "@/lib/redis";
+import { NextRequest, NextResponse } from "next/server";
 import { promisify } from "util";
+import { SolanaEscrow } from "@/lib/solana/escrow";
+import {
+  PublicKey,
+  sendAndConfirmTransaction,
+  TransactionExpiredBlockheightExceededError,
+} from "@solana/web3.js";
+import { getSolanaConnection } from "@/lib/solana/connection";
+import { clashRoyaleAPIClient } from "@/adapters/xhr";
 
-const getAsync = promisify(redisClient.get).bind(redisClient);
+const compareCards = (
+  playerACards: Record<string, any>[],
+  playerBCards: Record<string, any>[],
+  fields: string[],
+) => {
+  const compareFields = (
+    playerACard: Record<string, any>,
+    playerBCard: Record<string, any>,
+  ) => {
+    return fields.every((field) => playerACard[field] === playerBCard[field]);
+  };
 
-// const compareCards = (
-//   playerACards: Record<string, any>[],
-//   playerBCards: Record<string, any>[],
-//   fields: string[],
-// ) => {
-//   const compareFields = (
-//     playerACard: Record<string, any>,
-//     playerBCard: Record<string, any>,
-//   ) => {
-//     return fields.every((field) => playerACard[field] === playerBCard[field]);
-//   };
+  return playerACards.every((playerACard) =>
+    playerBCards.some((playerBCard) =>
+      compareFields(playerACard, playerBCard)
+    ) &&
+    playerBCards.every((playerBCard) =>
+      playerACards.some((playerACard) =>
+        compareFields(playerACard, playerBCard)
+      )
+    )
+  );
+};
 
-//   return playerACards.every((playerACard) =>
-//     playerBCards.some((playerBCard) =>
-//       compareFields(playerACard, playerBCard)
-//     ) &&
-//     playerBCards.every((playerBCard) =>
-//       playerACards.some((playerACard) =>
-//         compareFields(playerACard, playerBCard)
-//       )
-//     )
-//   );
-// };
+let challenge: any;
 
+const getAsync = promisify(redisClient.hget).bind(redisClient);
 
-export async function POST(
-  req: NextRequest,
-) {
+export async function POST(req: NextRequest) {
   try {
-    // let winner
-    const { token } = await req.json();
-    const challenge = verifyChallenge(token);
+    let winner;
+    const { token, resolverWallet } = await req.json();
+    challenge = verifyChallenge(token);
 
-    const result = await getAsync(challenge.id);
+    // Basic validation
+    const result = await getAsync(`${challenge.id}:challengeToken`, "accepted");
+    if (!result || result !== token || challenge.status !== "accepted") {
+      return NextResponse.json(
+        { error: "Invalid challenge state" },
+        { status: 400 },
+      );
+    }
 
-    if (!result) {
+    // Validate that the resolver is player A
+    if (resolverWallet !== challenge.playerA.wallet) {
+      return NextResponse.json(
+        { error: "Only the challenger can resolve this challenge" },
+        { status: 403 },
+      );
+    }
+
+    const response = await clashRoyaleAPIClient.get(
+      `/players/%23${encodeURIComponent(challenge.playerA.tag!)}/battlelog`,
+    );
+
+    const latestFriendlyBattle = response.data.find((battle: any) => {
+      console.log(
+        "playerACardsCompare",
+        compareCards(
+          battle.team[0].cards,
+          challenge.playerA.deck,
+          ["name", "id"],
+        ),
+      );
+
+      console.log(
+        "playerBCardsCompare",
+        compareCards(
+          battle.opponent[0].cards,
+          challenge.playerB?.deck as Card[],
+          ["name", "id"],
+        ),
+      );
+
+      return battle.type === "friendly" &&
+        battle.gameMode.name === "Friendly" &&
+        battle.deckSelection === "collection" &&
+        battle.team[0].tag.substring(1) === challenge.playerA.tag &&
+        compareCards(
+          battle.team[0].cards,
+          challenge.playerA.deck,
+          ["name", "id"],
+        ) &&
+        battle.opponent[0].tag.substring(1) === challenge.playerB?.tag &&
+        compareCards(
+          battle.opponent[0].cards,
+          challenge.playerB?.deck as Card[],
+          ["name", "id"],
+        );
+    });
+
+    if (!latestFriendlyBattle) {
       return NextResponse.json(
         {
-          error: "No active challenge is found",
+          error: "No valid battle found",
         },
         { status: 404 },
       );
     }
 
-    if (result !== token) {
+    if (
+      latestFriendlyBattle.team[0].crowns <
+        latestFriendlyBattle.opponent[0].crowns
+    ) {
+      winner = challenge.playerB?.wallet;
+    } else if (
+      latestFriendlyBattle.team[0].crowns >
+        latestFriendlyBattle.opponent[0].crowns
+    ) {
+      winner = challenge.playerA.wallet;
+    } else {
       return NextResponse.json(
         {
-          error: "Invalid Token",
+          error: "Battle Tied",
         },
-        { status: 403 },
+        { status: 500 },
       );
     }
 
-    if (challenge.status !== "accepted") {
+    // Rest of the existing code remains the same...
+    const connection = getSolanaConnection("confirmed");
+    const escrow = await SolanaEscrow.getEscrowForChallenge(
+      challenge.id,
+      connection,
+    );
+    if (!escrow) {
+      return NextResponse.json({ error: "Escrow not found" }, { status: 404 });
+    }
+
+    const escrowAccount = await escrow.getEscrowAccount();
+
+    // First check if account exists
+    const accountInfo = await connection.getAccountInfo(
+      escrowAccount.publicKey,
+    );
+    if (!accountInfo) {
       return NextResponse.json(
-        {
-          error: "Challenge is not in accepted state",
-        },
-        { status: 400 },
+        { error: "Escrow account not found" },
+        { status: 404 },
       );
     }
 
-    // const response = await clashRoyaleAPIClient.get(
-    //   `/players/%23${encodeURIComponent(challenge.playerA.tag!)}/battlelog`,
-    // );
+    const { transaction, closeAccount } = await escrow.withdrawFromEscrow(
+      2 * challenge.wagerAmount,
+      new PublicKey(challenge.playerA.wallet),
+    );
 
-    // const latestFriendlyBattle = response.data.find((battle: any) => {
-    //   return battle.type === "friendly" &&
-    //     battle.gameMode.name === "Friendly" &&
-    //     battle.deckSelection === "collection" &&
-    //     battle.team[0].tag === challenge.playerA.tag &&
-    //     compareCards(
-    //       battle.team[0].cards,
-    //       challenge.playerA.deck,
-    //       ["name", "id", "level"],
-    //     ) &&
-    //     battle.opponent[0].tag === challenge.playerB?.tag &&
-    //     compareCards(
-    //       battle.opponent[0].cards,
-    //       challenge.playerB?.deck as Card[],
-    //       ["name", "id", "level"],
-    //     );
-    // });
+    // Get fresh blockhash
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    transaction.recentBlockhash = blockhash;
 
-    // if (!latestFriendlyBattle) {
-    //   return NextResponse.json(
-    //     {
-    //       error: "No valid battle found",
-    //     },
-    //     { status: 404 },
-    //   );
-    // }
+    let signature: string;
 
-    // if (latestFriendlyBattle.team[0].crowns < latestFriendlyBattle.opponent[0].crowns) {
-    //   winner = challenge.playerB?.wallet
-    // }
+    try {
+      signature = await sendAndConfirmTransaction(
+        connection,
+        transaction,
+        [escrowAccount],
+        {
+          skipPreflight: false,
+          maxRetries: 3,
+          commitment: "confirmed",
+        },
+      );
+      console.log("Transaction successful:", signature);
+    } catch (txError: any) {
+      if (txError instanceof TransactionExpiredBlockheightExceededError) {
+        // If we get a block height exceeded error, check if the transaction was actually successful
+        try {
+          // Wait for a short time to allow the transaction to settle
+          await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // else if (latestFriendlyBattle.team[0].crowns > latestFriendlyBattle.opponent[0].crowns) {
-    //   winner = challenge.playerA.wallet
-    // }
+          // Check if escrow account still exists
+          const postTxAccountInfo = await connection.getAccountInfo(
+            escrowAccount.publicKey,
+          );
 
-    // else {
-    //   return NextResponse.json(
-    //     {
-    //       error: "Battle Tied",
-    //     },
-    //     { status: 500 },
-    //   );
-    // }
+          if (!postTxAccountInfo) {
+            // Account doesn't exist anymore, which means the transaction was successful
+            console.log("Transaction succeeded despite timeout error");
+          } else {
+            // Account still exists, transaction actually failed
+            throw txError;
+          }
+        } catch (confirmError) {
+          console.error("Error checking transaction status:", confirmError);
+          throw txError;
+        }
+      } else {
+        // For other errors, check if the account was modified
+        const postTxAccountInfo = await connection.getAccountInfo(
+          escrowAccount.publicKey,
+        );
+        if (postTxAccountInfo) {
+          console.error("Transaction failed:", txError);
+          throw txError;
+        }
+      }
+    }
 
-
-    // Here you would:
-    // 1. Fetch battle results from Clash Royale API
-    // 2. Determine winner
-    // 3. Call smart contract to distribute funds
-
-    // For prototype, let's just randomly pick a winner
-    const winner = Math.random() > 0.5
-      ? challenge.playerA.wallet
-      : challenge.playerB?.wallet;
+    if (closeAccount) {
+      await SolanaEscrow.cleanupEscrow(challenge.id);
+    }
 
     const resolvedChallenge = {
       ...challenge,
       status: "resolved" as const,
-      winner,
+      winner: winner,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     };
 
     const { exp, ...challengeWithoutExp } = resolvedChallenge; // eslint-disable-line @typescript-eslint/no-unused-vars
     const newToken = signChallenge(challengeWithoutExp);
 
-    const ttlSeconds = 24 * 60 * 60;
-
-    await redisClient.set(challenge.id, newToken, "EX", ttlSeconds);
-
-    return NextResponse.json(
-      {
-        challenge: resolvedChallenge,
-        token: newToken,
-      },
-      { status: 200 },
+    await redisClient.hmset(
+      `${challenge.id}:challengeToken`,
+      "resolved",
+      newToken,
     );
+    await redisClient.expire(challenge.id, 24 * 60 * 60);
+
+    return NextResponse.json({
+      challenge: resolvedChallenge,
+      token: newToken,
+    });
   } catch (error) {
     console.error("Error resolving challenge:", error);
+    await redisClient.hdel(`${challenge.id}:challengeToken`, "resolved");
     return NextResponse.json(
-      {
-        error: "Failed to resolve challenge",
-      },
+      { error: "Failed to resolve challenge" },
       { status: 500 },
     );
   }
