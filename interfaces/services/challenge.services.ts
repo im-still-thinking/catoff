@@ -37,8 +37,9 @@ export class ChallengeService {
 
       const token = signChallenge(challenge);
       await this.redisClient.hmset(
-        params.challengeId,
-        { "challengeToken": token },
+        `${params.challengeId}:challengeToken`,
+        "created",
+        token,
       );
 
       return {
@@ -47,12 +48,13 @@ export class ChallengeService {
         escrowPubkey: params.escrowPubkey,
       };
     } catch (error) {
-      await this.redisClient.hdel(params.challengeId, "challengeToken");
+      await this.redisClient.hdel(
+        `${params.challengeId}:challengeToken`,
+        "created",
+      );
       throw error;
     }
   }
-
-  // async getChallenge()
 
   async validateRequest(req: Request): Promise<ChallengeRequestValidation> {
     let body: any;

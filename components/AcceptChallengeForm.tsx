@@ -15,6 +15,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
   const [playerData, setPlayerData] = useState<Player | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
   const { publicKey, connect, connection, sendTransaction } = useWallet();
 
@@ -23,6 +24,25 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       fetchPlayerData(playerTag.trim());
     }
   }, [publicKey, playerData, playerTag]);
+
+  // Add validation check function
+  const validateChallenge = (): boolean => {
+    setValidationError(null);
+    
+    // Check if player tags match
+    if (playerTag.trim() === challenge.playerA.tag) {
+      setValidationError("You cannot accept a challenge with the same player tag as the challenger");
+      return false;
+    }
+
+    // Check if wallet addresses match
+    if (publicKey?.toBase58() === challenge.playerA.wallet) {
+      setValidationError("You cannot accept a challenge with the same wallet as the challenger");
+      return false;
+    }
+
+    return true;
+  };
 
   const waitForTransactionConfirmation = async (signature: string): Promise<boolean> => {
     const startTime = Date.now();
@@ -81,12 +101,23 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       alert("Please enter a player tag");
       return;
     }
+
+    // Validate before fetching player data
+    if (!validateChallenge()) {
+      return;
+    }
+
     await fetchPlayerData(playerTag.trim());
   };
 
   const handleAccept = async () => {
     if (!challenge || !publicKey || selectedDeck.length !== 8) {
       alert("Complete all fields before accepting the challenge.");
+      return;
+    }
+
+    // Validate before processing transaction
+    if (!validateChallenge()) {
       return;
     }
 
@@ -124,7 +155,6 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
 
       if (response.status === 200) {
         const { challenge } = response.data;
-
         router.push(`/challenge/${challenge.id}/status?`);
       } else {
         throw new Error("Failed to accept the challenge.");
@@ -172,6 +202,12 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
 
   return (
     <div className="space-y-4">
+      {validationError && (
+        <div className="bg-red-500/20 border border-red-500 text-red-100 p-4 rounded-lg">
+          {validationError}
+        </div>
+      )}
+      
       {!playerData ? (
         <form onSubmit={handleTagSubmit} className="space-y-4 mt-10 flex flex-col items-center justify-center">
           <div className="flex flex-row gap-4 items-center justify-center">

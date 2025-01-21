@@ -11,16 +11,44 @@ import {
   TransactionExpiredBlockheightExceededError,
 } from "@solana/web3.js";
 import { getSolanaConnection } from "@/lib/solana/connection";
+import { clashRoyaleAPIClient } from "@/adapters/xhr";
+
+const compareCards = (
+  playerACards: Record<string, any>[],
+  playerBCards: Record<string, any>[],
+  fields: string[],
+) => {
+  const compareFields = (
+    playerACard: Record<string, any>,
+    playerBCard: Record<string, any>,
+  ) => {
+    return fields.every((field) => playerACard[field] === playerBCard[field]);
+  };
+
+  return playerACards.every((playerACard) =>
+    playerBCards.some((playerBCard) =>
+      compareFields(playerACard, playerBCard)
+    ) &&
+    playerBCards.every((playerBCard) =>
+      playerACards.some((playerACard) =>
+        compareFields(playerACard, playerBCard)
+      )
+    )
+  );
+};
+
+let challenge: any;
 
 const getAsync = promisify(redisClient.hget).bind(redisClient);
 
 export async function POST(req: NextRequest) {
   try {
-    const { token } = await req.json();
-    const challenge = verifyChallenge(token);
+    let winner;
+    const { token, resolverWallet } = await req.json();
+    challenge = verifyChallenge(token);
 
     // Basic validation
-    const result = await getAsync(challenge.id, "challengeToken");
+    const result = await getAsync(`${challenge.id}:challengeToken`, "accepted");
     if (!result || result !== token || challenge.status !== "accepted") {
       return NextResponse.json(
         { error: "Invalid challenge state" },
@@ -28,7 +56,83 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get escrow
+    // Validate that the resolver is player A
+    if (resolverWallet !== challenge.playerA.wallet) {
+      return NextResponse.json(
+        { error: "Only the challenger can resolve this challenge" },
+        { status: 403 },
+      );
+    }
+
+    const response = await clashRoyaleAPIClient.get(
+      `/players/%23${encodeURIComponent(challenge.playerA.tag!)}/battlelog`,
+    );
+
+    const latestFriendlyBattle = response.data.find((battle: any) => {
+      console.log(
+        "playerACardsCompare",
+        compareCards(
+          battle.team[0].cards,
+          challenge.playerA.deck,
+          ["name", "id"],
+        ),
+      );
+
+      console.log(
+        "playerBCardsCompare",
+        compareCards(
+          battle.opponent[0].cards,
+          challenge.playerB?.deck as Card[],
+          ["name", "id"],
+        ),
+      );
+
+      return battle.type === "friendly" &&
+        battle.gameMode.name === "Friendly" &&
+        battle.deckSelection === "collection" &&
+        battle.team[0].tag.substring(1) === challenge.playerA.tag &&
+        compareCards(
+          battle.team[0].cards,
+          challenge.playerA.deck,
+          ["name", "id"],
+        ) &&
+        battle.opponent[0].tag.substring(1) === challenge.playerB?.tag &&
+        compareCards(
+          battle.opponent[0].cards,
+          challenge.playerB?.deck as Card[],
+          ["name", "id"],
+        );
+    });
+
+    if (!latestFriendlyBattle) {
+      return NextResponse.json(
+        {
+          error: "No valid battle found",
+        },
+        { status: 404 },
+      );
+    }
+
+    if (
+      latestFriendlyBattle.team[0].crowns <
+        latestFriendlyBattle.opponent[0].crowns
+    ) {
+      winner = challenge.playerB?.wallet;
+    } else if (
+      latestFriendlyBattle.team[0].crowns >
+        latestFriendlyBattle.opponent[0].crowns
+    ) {
+      winner = challenge.playerA.wallet;
+    } else {
+      return NextResponse.json(
+        {
+          error: "Battle Tied",
+        },
+        { status: 500 },
+      );
+    }
+
+    // Rest of the existing code remains the same...
     const connection = getSolanaConnection("confirmed");
     const escrow = await SolanaEscrow.getEscrowForChallenge(
       challenge.id,
@@ -116,14 +220,18 @@ export async function POST(req: NextRequest) {
     const resolvedChallenge = {
       ...challenge,
       status: "resolved" as const,
-      winner: challenge.playerA.wallet,
+      winner: winner,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     };
 
     const { exp, ...challengeWithoutExp } = resolvedChallenge; // eslint-disable-line @typescript-eslint/no-unused-vars
     const newToken = signChallenge(challengeWithoutExp);
 
-    await redisClient.hmset(challenge.id, { "challengeToken": newToken });
+    await redisClient.hmset(
+      `${challenge.id}:challengeToken`,
+      "resolved",
+      newToken,
+    );
     await redisClient.expire(challenge.id, 24 * 60 * 60);
 
     return NextResponse.json({
@@ -132,6 +240,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error resolving challenge:", error);
+    await redisClient.hdel(`${challenge.id}:challengeToken`, "resolved");
     return NextResponse.json(
       { error: "Failed to resolve challenge" },
       { status: 500 },

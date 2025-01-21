@@ -7,7 +7,7 @@ import AcceptChallengeForm from "@/components/AcceptChallengeForm";
 async function getChallenge(id: string): Promise<any> {
   try {
 
-    const response = await localAPIClient.get(`/challenge/${id}`);
+    const response = await localAPIClient.get(`/challenge/${id}?type="created"`);
 
     if (response.status !== 200) {
       throw new Error("Failed to fetch challenge data.");

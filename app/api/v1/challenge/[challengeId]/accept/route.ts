@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { signChallenge, verifyChallenge } from "@/lib/jwt";
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
@@ -7,15 +9,17 @@ import { getSolanaConnection } from "@/lib/solana/connection";
 
 const getAsync = promisify(redisClient.hget).bind(redisClient);
 
+let challenge: any
+
 export async function POST(
   req: NextRequest,
 ) {
   try {
     const { token, playerTag, deck, publicKey } = await req.json();
 
-    const challenge = verifyChallenge(token);
+    challenge = verifyChallenge(token);
 
-    const result = await getAsync(challenge.id, "challengeToken");
+    const result = await getAsync(`${challenge.id}:challengeToken`, "created");
 
     if (!result) {
       return NextResponse.json(
@@ -53,6 +57,24 @@ export async function POST(
       );
     }
 
+    if (challenge.playerA.tag === playerTag) {
+      return NextResponse.json(
+        {
+          error: "Player B cannot use the same tag as Player A",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (challenge.playerA.wallet === publicKey) {
+      return NextResponse.json(
+        {
+          error: "Player B cannot use the same wallet address as Player A",
+        },
+        { status: 400 },
+      );
+    }
+
     const connection = getSolanaConnection("finalized");
     const escrow = await SolanaEscrow.getEscrowForChallenge(
       challenge.id,
@@ -82,7 +104,7 @@ export async function POST(
 
     const ttlSeconds = 24 * 60 * 60;
 
-    await redisClient.hmset(challenge.id, { "challengeToken": newToken });
+    await redisClient.hmset(`${challenge.id}:challengeToken`, "accepted", newToken);
     await redisClient.expire(challenge.id, ttlSeconds);
 
     return NextResponse.json(
@@ -95,6 +117,7 @@ export async function POST(
     );
   } catch (error) {
     console.error("Error accepting challenge:", error);
+    await redisClient.hdel(`${challenge.id}:challengeToken`, "accepted");
     return NextResponse.json(
       {
         error: "Failed to accept challenge",
