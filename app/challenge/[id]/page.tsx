@@ -19,15 +19,9 @@ async function getChallenge(id: string): Promise<any> {
   }
 }
 
-interface PageProps {
-  params: {
-    id: string;
-  };
-}
-
 export default async function ChallengePage({
   params,
-}: PageProps) {
+} : any) {
   const { id } = await params;
 
   if (!id) {
