@@ -3,7 +3,34 @@
 import { EscrowService } from "@/interfaces/services/escrow.services";
 import { NextRequest, NextResponse } from "next/server";
 import { getSolanaConnection } from "@/lib/solana/connection";
-import { EscrowError } from "@/domain/errors/escrow.errors";
+
+export async function GET(req: NextRequest) {
+    const connection = getSolanaConnection("finalized");
+    const escrowService = new EscrowService(connection);
+
+    try {
+        const { challengeId } = await escrowService
+            .validateEscrowGetRequest(
+                req,
+            );
+
+        const { escrow } = await escrowService
+            .getEscrow({
+                challengeId,
+            });
+
+        return NextResponse.json({
+            escrow,
+        }, { status: 200 });
+    } catch (error: any) {
+        return NextResponse.json({
+            error: {
+                code: "ESCROW_GET_FAILED",
+                message: error.message,
+            },
+        }, { status: 500 });
+    }
+}
 
 export async function POST(req: NextRequest) {
     const connection = getSolanaConnection("finalized");
@@ -27,15 +54,6 @@ export async function POST(req: NextRequest) {
             escrowPubkey,
         }, { status: 201 });
     } catch (error: any) {
-        if (error instanceof EscrowError) {
-            return NextResponse.json({
-                error: {
-                    code: error.code,
-                    message: error.message,
-                },
-            }, { status: error.details.status });
-        }
-
         return NextResponse.json({
             error: {
                 code: "ESCROW_CREATION_FAILED",

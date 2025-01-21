@@ -1,32 +1,34 @@
-import { verifyChallenge } from "@/lib/jwt";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 
+import { ChallengeService } from "@/interfaces/services/challenge.services";
 
 export async function GET(
     req: NextRequest,
 ) {
+    const challengeService = new ChallengeService(redisClient);
+
     try {
-        const url = new URL(req.url);
-        const challengeId = req.nextUrl.pathname.split("/")[4];
-        const type = url.searchParams.get('type');
-        const token = await redisClient.hget(`${challengeId}`, `${type}`);
+        const {
+            challengeId,
+        } = await challengeService.validateChallengeGetRequest(
+            req,
+        );
 
-        if (!token || typeof token !== "string") {
-            return NextResponse.json({ error: "Token is Invalid!" }, {
-                status: 400,
-            });
-        }
-
-        const challenge = verifyChallenge(token);
-
-        return NextResponse.json({ challenge: challenge, token: token }, {
-            status: 200,
+        const result = await challengeService.getChallenge({
+            challengeId,
+            type: "created"
         });
-    } catch (error) {
-        console.error("Error fetching challenge:", error);
-        return NextResponse.json({ error: "Failed to fetch challenge" }, {
-            status: 500,
-        });
+
+        return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+        return NextResponse.json({
+            error: {
+                code: "CHALLENGE_GET_FAILED",
+                message: error.message,
+            },
+        }, { status: 500 });
     }
 }

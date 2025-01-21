@@ -6,7 +6,7 @@ export const POST = async (request: NextRequest) => {
         const { key, value } = await request.json();
 
         await redisClient.hmset(key, value);
-        await redisClient.expire(key, 24 * 60 * 60);
+        // await redisClient.expire(key, 24 * 60 * 60);
 
         return NextResponse.json(
             {

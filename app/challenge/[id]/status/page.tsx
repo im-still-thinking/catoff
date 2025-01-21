@@ -20,7 +20,7 @@ export default function ChallengeStatus() {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const res = await localAPIClient.get(`/challenge/${id}?type=accepted`, {});
+                const res = await localAPIClient.get(`/challenge/${id}/resolve`, {});
                 setChallenge(res.data.challenge);
                 setToken(res.data.token);
             } catch (error) {
@@ -44,16 +44,16 @@ export default function ChallengeStatus() {
         try {
             const res = await localAPIClient.post(
                 `/challenge/${challenge?.id}/resolve`,
-                { 
+                {
                     token,
                     resolverWallet: publicKey.toString()
                 }
             );
 
             if (res.status === 200) {
-                const { challenge: updatedChallenge, token: newToken } = res.data;
+                const { challenge: updatedChallenge } = res.data;
                 setChallenge(updatedChallenge);
-                router.replace(`/challenge/${updatedChallenge.id}/status?token=${encodeURIComponent(newToken)}`);
+                router.replace(`/challenge/${updatedChallenge.id}/status`);
             }
         } catch (error: any) {
             console.error('Error resolving challenge:', error);
@@ -63,8 +63,8 @@ export default function ChallengeStatus() {
         }
     };
 
-    const canResolve = challenge?.status === 'accepted' && 
-                      publicKey?.toString() === challenge?.playerA.wallet;
+    const canResolve = challenge?.status === 'accepted' &&
+        publicKey?.toString() === challenge?.playerA.wallet;
 
     if (loading) {
         return (
@@ -92,11 +92,10 @@ export default function ChallengeStatus() {
                         <button
                             onClick={handleResolve}
                             disabled={isProcessing}
-                            className={`w-full font-semibold p-3 rounded-lg transition-colors ${
-                                isProcessing
-                                    ? 'bg-gray-400 cursor-not-allowed'
-                                    : 'bg-green-500 hover:bg-green-600'
-                            } text-white`}
+                            className={`w-full font-semibold p-3 rounded-lg transition-colors ${isProcessing
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-green-500 hover:bg-green-600'
+                                } text-white`}
                         >
                             {isProcessing ? 'Processing...' : 'Resolve Challenge'}
                         </button>

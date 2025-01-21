@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from "@/hooks/useWallet";
 import { localAPIClient } from "@/adapters/xhr";
@@ -19,16 +21,11 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
   const router = useRouter();
   const { publicKey, connect, connection, sendTransaction } = useWallet();
 
-  useEffect(() => {
-    if (publicKey && playerTag && !playerData) {
-      fetchPlayerData(playerTag.trim());
-    }
-  }, [publicKey, playerData, playerTag]);
 
   // Add validation check function
   const validateChallenge = (): boolean => {
     setValidationError(null);
-    
+
     // Check if player tags match
     if (playerTag.trim() === challenge.playerA.tag) {
       setValidationError("You cannot accept a challenge with the same player tag as the challenger");
@@ -102,15 +99,36 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       return;
     }
 
-    // Validate before fetching player data
+    // Clean the tag by removing # if present at the start
+    let cleanedTag = playerTag.trim();
+    if (cleanedTag.startsWith('#')) {
+      cleanedTag = cleanedTag.substring(1).trim();
+      setPlayerTag(cleanedTag); // Update the state with cleaned tag
+    }
+
     if (!validateChallenge()) {
       return;
     }
 
-    await fetchPlayerData(playerTag.trim());
+    // Make single API call with cleaned tag
+    await fetchPlayerData(cleanedTag);
   };
 
-  const handleAccept = async () => {
+  const getEscrow = async (): Promise<any> => {
+    const response = await localAPIClient.get(`/challenge/escrow?challengeId=${challenge.id}`);
+
+    if (response.status === 200) {
+      const { escrow } = response.data
+
+      if (!escrow) throw new Error("Failed to get escrow");
+
+      return { escrow }
+    }
+  }
+
+  const handleAccept = async (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (!challenge || !publicKey || selectedDeck.length !== 8) {
       alert("Complete all fields before accepting the challenge.");
       return;
@@ -124,8 +142,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     setIsProcessing(true);
 
     try {
-      const escrow = await SolanaEscrow.getEscrowForChallenge(challenge.id, connection);
-      if (!escrow) throw new Error(`Escrow for challenge ${challenge.id} not found`);
+      const { escrow } = await getEscrow()
 
       let signature: string | null = null;
       let retries = 0;
@@ -174,7 +191,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       const response = await localAPIClient.post(`/challenge/${challenge.id}/decline`, {
         token: token,
       });
-      
+
       if (response.status === 200) {
         router.push("/");
       } else {
@@ -207,7 +224,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
           {validationError}
         </div>
       )}
-      
+
       {!playerData ? (
         <form onSubmit={handleTagSubmit} className="space-y-4 mt-10 flex flex-col items-center justify-center">
           <div className="flex flex-row gap-4 items-center justify-center">

@@ -70,7 +70,6 @@ type Battle = {
     team: [];
 };
 
-
 type DeckSelectorProps = {
     cards: Card[];
     onSelect: (deck: Card[]) => void;
@@ -88,7 +87,28 @@ type ChallengeRequestValidation = {
     wagerAmount: number;
     publicKey: string;
     escrowPubkey: string;
-}
+};
+
+type ChallengeGetValidation = {
+    challengeId: string;
+};
+
+type ChallengeAcceptValidation = {
+    playerTag: string;
+    deck: Card[];
+    publicKey: string;
+    challenge: Challenge;
+};
+
+type ChallengeResolveValidation = {
+    token: string;
+    resolverWallet: string
+    challenge: Challenge
+};
+
+type ChallengeDeclineValidation = {
+    challenge: Challenge;
+};
 
 type ChallengeTransactionLog = {
     timestamp: string;

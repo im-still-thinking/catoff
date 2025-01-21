@@ -23,7 +23,7 @@ export default function CreateChallenge() {
 
   const fetchPlayerData = async (tag: string) => {
     if (!tag) return;
-
+  
     try {
       const response = await localAPIClient.get(`/proxy/crPlayerInfo/?tag=${encodeURIComponent(tag)}`);
       if (response.status !== 200) {
@@ -42,11 +42,16 @@ export default function CreateChallenge() {
       alert("Please enter a player tag");
       return;
     }
-    if (playerTag.trim().indexOf('#') === 0) {
-      setPlayerTag(playerTag.substring(1).trim())
-      await fetchPlayerData(playerTag.substring(1).trim());
+    
+    // Clean the tag by removing # if present at the start
+    let cleanedTag = playerTag.trim();
+    if (cleanedTag.startsWith('#')) {
+      cleanedTag = cleanedTag.substring(1).trim();
+      setPlayerTag(cleanedTag); // Update the state with cleaned tag
     }
-    await fetchPlayerData(playerTag.trim());
+    
+    // Make single API call with cleaned tag
+    await fetchPlayerData(cleanedTag);
   };
 
   const waitForTransactionConfirmation = async (signature: string): Promise<boolean> => {

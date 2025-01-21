@@ -4,6 +4,10 @@ type EscrowCreationRequestValidation = {
     publicKey: string;
 };
 
+type EscrowCreationGetValidation = {
+    challengeId: string;
+};
+
 type EscrowCreationResponseValidation = {
     challengeId: string;
     serializedInitTx: string;
