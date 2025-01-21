@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "docker:prod": "./start-prod.sh"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.0",

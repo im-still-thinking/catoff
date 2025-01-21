@@ -5,6 +5,7 @@ export const secrets = {
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
     CLASH_ROYALE_API: process.env.CLASH_ROYALE_API,
     SOLANA_RPC_URL: process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
-    JWT_SECRET: process.env.JWT_SECRET
+    JWT_SECRET: process.env.JWT_SECRET,
+    FIXIE_URL: process.env.FIXIE_URL    
 }
 
