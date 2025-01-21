@@ -72,7 +72,7 @@ export class ChallengeService {
     try {
       const token = await this.redisClient.hget(
         `${params.challengeId}`,
-        `type`,
+        `${params.type}`,
       );
       const challenge = verifyChallenge(token as string);
 
