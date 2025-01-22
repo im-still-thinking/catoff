@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+export const maxDuration = 60;
 
 import { redisClient } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";

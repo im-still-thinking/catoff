@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export const maxDuration = 60;
+
 import { EscrowService } from "@/interfaces/services/escrow.services";
 import { NextRequest, NextResponse } from "next/server";
 import { getSolanaConnection } from "@/lib/solana/connection";
