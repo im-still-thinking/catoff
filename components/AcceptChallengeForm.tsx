@@ -118,7 +118,12 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     const response = await localAPIClient.get(`/challenge/escrow?challengeId=${challenge.id}`);
 
     if (response.status === 200) {
-      const { escrow } = response.data
+      const { challengeId } = response.data
+
+      const escrow = await SolanaEscrow.getEscrowForChallenge(
+        challengeId,
+        connection,
+      );
 
       if (!escrow) throw new Error("Failed to get escrow");
 
@@ -184,9 +189,19 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     }
   };
 
-  const handleDecline = async () => {
-    if (!challenge || !token) return;
+  const handleDecline = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    console.log("challenge id", challenge.id)
+    console.log("token", token)
+
+    if (!challenge?.id || !token) {
+      console.error("Missing required data for declining challenge");
+      return;
+    }
+
     setIsProcessing(true);
+
     try {
       const response = await localAPIClient.post(`/challenge/${challenge.id}/decline`, {
         token: token,
@@ -195,12 +210,14 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       if (response.status === 200) {
         router.push("/");
       } else {
-        const errorData = await response.data;
-        throw new Error(errorData.error || "Failed to decline the challenge.");
+        // Handle non-200 responses
+        const errorMessage = response.data?.error || "Failed to decline the challenge.";
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error("Error declining challenge:", error);
-      alert(error instanceof Error ? error.message : "Failed to decline the challenge. Please try again.");
+      // Show error in UI instead of using alert
+      setValidationError(error instanceof Error ? error.message : "Failed to decline the challenge. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -260,11 +277,12 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
               {isProcessing ? "Processing..." : "Accept Challenge"}
             </button>
             <button
+              type="button"
               onClick={handleDecline}
-              className="flex-1 border-2 border-white rounded-xl font-supercell bg-red-500 text-white p-2 hover:bg-red-600 transition-colors"
+              className="flex-1 border-2 border-white rounded-xl font-supercell bg-red-500 text-white p-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isProcessing}
             >
-              Decline Challenge
+              {isProcessing ? "Processing..." : "Decline Challenge"}
             </button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { EscrowService } from "@/interfaces/services/escrow.services";
 import { NextRequest, NextResponse } from "next/server";
 import { getSolanaConnection } from "@/lib/solana/connection";
 
+
 export async function GET(req: NextRequest) {
     const connection = getSolanaConnection("finalized");
     const escrowService = new EscrowService(connection);
@@ -14,19 +15,19 @@ export async function GET(req: NextRequest) {
                 req,
             );
 
-        const { escrow } = await escrowService
-            .getEscrow({
-                challengeId,
-            });
+        // const { escrow } = await escrowService
+        //     .getEscrow({
+        //         challengeId,
+        //     });
 
         return NextResponse.json({
-            escrow,
+            challengeId
         }, { status: 200 });
     } catch (error: any) {
+        console.error(error)
         return NextResponse.json({
             error: {
                 code: "ESCROW_GET_FAILED",
-                message: error.message,
             },
         }, { status: 500 });
     }

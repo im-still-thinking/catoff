@@ -79,6 +79,7 @@ export class ChallengeService {
 
       return {
         challenge: challenge,
+        token
       };
     } catch (error) {
       console.error(error);

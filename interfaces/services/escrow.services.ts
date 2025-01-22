@@ -33,25 +33,26 @@ export class EscrowService {
         }
     }
 
-    async getEscrow(params: {
-        challengeId: string;
-    }) {
-        try {
-            const escrow = await SolanaEscrow.getEscrowForChallenge(
-                params.challengeId,
-                this.connection,
-            );
-            if (!escrow) {
-                throw new Error(
-                    `Escrow for challenge ${params.challengeId} not found`,
-                );
-            }
+    // async getEscrow(params: {
+    //     challengeId: string;
+    // }) {
+    //     try {
+    //         const escrow = await SolanaEscrow.getEscrowForChallenge(
+    //             params.challengeId,
+    //             this.connection,
+    //         );
 
-            return { escrow };
-        } catch (error) {
-            throw error;
-        }
-    }
+    //         if (!escrow) {
+    //             throw new Error(
+    //                 `Escrow for challenge ${params.challengeId} not found`,
+    //             );
+    //         }
+
+    //         return { escrow };
+    //     } catch (error) {
+    //         throw error;
+    //     }
+    // }
 
     async validateEscrowCreationRequest(
         req: Request,
@@ -106,7 +107,7 @@ export class EscrowService {
         if (typeof challengeId !== "string") {
             throw new Error("Invalid challengeId format");
         }
-
+        
         return { challengeId };
     }
 }

@@ -26,7 +26,7 @@ export async function POST(
       challenge,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json(result, { status: 200 });
 
   } catch (error: any) {
     return NextResponse.json({

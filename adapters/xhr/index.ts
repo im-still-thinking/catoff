@@ -7,12 +7,14 @@ const fixieUrl = url.parse("http://fixie:xkF6NQoFyyGZ223@criterium.usefixie.com:
 const fixieAuth = (fixieUrl?.auth ?? "").split(":");
 
 export const localAPIClient = axios.create({
-    baseURL: "https://catoff-rouge.vercel.app/api/v1",
+    baseURL: "http://localhost:3000/api/v1",
     headers: {
         "Content-Type": "application/json",
     },
 });
 
+// https://catoff-rouge.vercel.app
+// http://localhost:3000
 
 export const clashRoyaleAPIClient = axios.create({
     baseURL: "https://api.clashroyale.com/v1",
