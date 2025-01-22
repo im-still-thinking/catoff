@@ -1,20 +1,10 @@
 import type { Metadata } from "next";
-// import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/contexts/WalletContext";
 import { WalletAuthProvider } from "@/contexts/WalletAuthContext";
 import Image from "next/image";
 import localFont from 'next/font/local'
 
-// const geistSans = Geist({
-//   variable: "--font-geist-sans",
-//   subsets: ["latin"],
-// });
-
-// const geistMono = Geist_Mono({
-//   variable: "--font-geist-mono",
-//   subsets: ["latin"],
-// });
 
 const supercellMagic = localFont({
   src: '../public/fonts/supercell-magic.ttf',
@@ -24,6 +14,19 @@ const supercellMagic = localFont({
 export const metadata: Metadata = {
   title: "Clash Royale 1 ON 1",
   description: "An app where you challenge your friends to 1 on 1 Clash Royale Battles with a twist!",
+  openGraph: {
+    title: 'Clash Royale 1 ON 1 Wager App',
+    description: 'An app where you challenge your friends to 1 on 1 Clash Royale Battles with a twist!',
+    url: 'https://catoff-rouge.vercel.app/',
+    siteName: 'Clash Royale 1 on 1 app',
+    images: [
+      {
+        url: 'https://images2.alphacoders.com/855/855974.jpg',
+        width: 800,
+        height: 600,
+      },
+    ],
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +49,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 />
               </div>
             </header>
+            <div className="w-fit mx-auto mt-2 px-6 py-2 bg-yellow-500/90 rounded-xl backdrop-blur-sm border-2 border-white">
+              <p className="text-white text-sm font-supercell">
+                ⚠️ All transactions are on Devnet only
+              </p>
+            </div>
             <main>{children}</main>
           </body>
         </html>
