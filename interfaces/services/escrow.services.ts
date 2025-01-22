@@ -26,6 +26,8 @@ export class EscrowService {
                 new PublicKey(params.publicKey),
             );
 
+            console.log("Pubkeyyy", escrowPubkey)
+
             return { serializedInitTx, challengeId, escrowPubkey };
         } catch (error) {
             await SolanaEscrow.cleanupEscrow(challengeId);
