@@ -26,6 +26,14 @@ export const metadata: Metadata = {
         height: 600,
       },
     ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Clash Royale 1 ON 1 Wager App',
+    description: 'An app where you challenge your friends to 1 on 1 Clash Royale Battles with a twist!',
+    site: '@AritraR2002', // Replace with your Twitter handle
+    creator: '@AritraR2002', // Replace with your Twitter handle
+    images: ['https://images2.alphacoders.com/855/855974.jpg'],
   }
 };
 
