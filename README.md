@@ -4,6 +4,10 @@ A decentralized application (dApp) built on the Solana blockchain that integrate
 
 ---
 
+![Solana Clash Royale Challenge](https://images2.alphacoders.com/855/855974.jpg)
+
+---
+
 ## Features
 
 - *Challenge System*: Two players, a challenger and a challengee, register and stake an agreed amount of SOL tokens to initiate a challenge.
