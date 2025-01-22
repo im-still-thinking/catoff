@@ -131,3 +131,10 @@ type ChallengeTransactionResult = {
         details?: any;
     };
 };
+
+
+type ResolutionStatus = {
+    playerAResolved: boolean;
+    playerBResolved: boolean;
+    timestamp: number;
+  }

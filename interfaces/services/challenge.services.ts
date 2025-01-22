@@ -69,21 +69,40 @@ export class ChallengeService {
     challengeId: string;
     type: string;
   }) {
+    let token: string | null;
     try {
-
-      const token = await this.redisClient.hget(
+      token = await this.redisClient.hget(
         `${params.challengeId}`,
         `${params.type}`,
       );
+
+      if (!token && params.type === "accepted") {
+        token = await this.redisClient.hget(
+          `${params.challengeId}`,
+          `resolved`,
+        );
+      } else if (!token) {
+        throw {
+          code: "CHALLENGE_NOT_FOUND",
+          message: "Challenge not found or in a different state",
+        };
+      }
+
       const challenge = verifyChallenge(token as string);
 
       return {
         challenge: challenge,
-        token
+        token,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      throw error;
+      if (error.code === "CHALLENGE_NOT_FOUND") {
+        throw error;
+      }
+      throw {
+        code: "CHALLENGE_INVALID_STATE",
+        message: "Error processing challenge",
+      };
     }
   }
 
@@ -243,40 +262,71 @@ export class ChallengeService {
     }
   }
 
+  async getResolutionStatus(
+    challengeId: string,
+  ): Promise<ResolutionStatus | null> {
+    const status = await this.redisClient.hgetall(`resolution:${challengeId}`);
+    if (!Object.keys(status).length) return null;
+
+    return {
+      playerAResolved: status.playerAResolved === "true",
+      playerBResolved: status.playerBResolved === "true",
+      timestamp: parseInt(status.timestamp),
+    };
+  }
+
   async resolveChallenge(params: {
     token: string;
     resolverWallet: string;
     challenge: Challenge;
   }) {
     try {
-      let winner;
+      let winner, winnerWallet;
+      const resolutionKey = `resolution:${params.challenge.id}`;
 
-      const compareCards = (
-        playerACards: Record<string, any>[],
-        playerBCards: Record<string, any>[],
-        fields: string[],
-      ) => {
-        const compareFields = (
-          playerACard: Record<string, any>,
-          playerBCard: Record<string, any>,
-        ) => {
-          return fields.every((field) =>
-            playerACard[field] === playerBCard[field]
-          );
-        };
+      // Get current resolution status
+      const currentStatus = await this.getResolutionStatus(params.challenge.id);
 
-        return playerACards.every((playerACard) =>
-          playerBCards.some((playerBCard) =>
-            compareFields(playerACard, playerBCard)
-          ) &&
-          playerBCards.every((playerBCard) =>
-            playerACards.some((playerACard) =>
-              compareFields(playerACard, playerBCard)
-            )
-          )
-        );
+      // Determine which player is resolving
+      const isPlayerA =
+        params.resolverWallet === params.challenge.playerA.wallet;
+      const isPlayerB =
+        params.resolverWallet === params.challenge.playerB?.wallet;
+
+      if (!isPlayerA && !isPlayerB) {
+        throw new Error("Only challenge participants can resolve");
+      }
+
+      // Update resolution status
+      const updatedStatus: ResolutionStatus = {
+        playerAResolved: isPlayerA
+          ? true
+          : currentStatus?.playerAResolved || false,
+        playerBResolved: isPlayerB
+          ? true
+          : currentStatus?.playerBResolved || false,
+        timestamp: Date.now(),
       };
 
+      // Store updated status
+      await this.redisClient.hmset(
+        resolutionKey,
+        updatedStatus,
+      );
+
+      // Set expiry for resolution status (24 hours)
+      await this.redisClient.expire(resolutionKey, 24 * 60 * 60);
+
+      // If both parties haven't resolved yet, return early
+      if (!updatedStatus.playerAResolved || !updatedStatus.playerBResolved) {
+        return {
+          status: "waiting_for_resolution",
+          playerAResolved: updatedStatus.playerAResolved,
+          playerBResolved: updatedStatus.playerBResolved,
+        };
+      }
+
+      // Both parties have resolved, proceed with battle verification
       const response = await clashRoyaleAPIClient.get(
         `/players/%23${
           encodeURIComponent(params.challenge.playerA.tag!)
@@ -288,45 +338,51 @@ export class ChallengeService {
           battle.gameMode.name === "Friendly" &&
           battle.deckSelection === "collection" &&
           battle.team[0].tag.substring(1) === params.challenge.playerA.tag &&
-          compareCards(
-            battle.team[0].cards,
-            params.challenge.playerA.deck,
-            ["name", "id"],
-          ) &&
-          battle.opponent[0].tag.substring(1) ===
-            params.challenge.playerB?.tag &&
-          compareCards(
-            battle.opponent[0].cards,
-            params.challenge.playerB?.deck as Card[],
-            ["name", "id"],
-          );
+          battle.opponent[0].tag.substring(1) === params.challenge.playerB?.tag;
       });
 
       if (!latestFriendlyBattle) {
-        throw Error("No valid battle found");
+        // Clear resolution status and require re-resolution
+        await this.redisClient.del(resolutionKey);
+        throw {
+          code: "BATTLE_NOT_FOUND",
+          message: "No valid battle found. Please play the match first.",
+        };
       }
 
+      // Determine winner
       if (
         latestFriendlyBattle.team[0].crowns <
           latestFriendlyBattle.opponent[0].crowns
       ) {
-        winner = params.challenge.playerB?.wallet;
+        winner = params.challenge.playerB?.tag;
+        winnerWallet = params.challenge.playerB?.wallet;
       } else if (
         latestFriendlyBattle.team[0].crowns >
           latestFriendlyBattle.opponent[0].crowns
       ) {
-        winner = params.challenge.playerA.wallet;
+        winner = params.challenge.playerA.tag;
+        winnerWallet = params.challenge.playerA.wallet;
       } else {
-        throw Error("Battle Tied");
+        // Clear resolution status and require re-resolution
+        await this.redisClient.del(resolutionKey);
+        throw {
+          code: "BATTLE_TIED",
+          message: "Battle ended in a tie. Please play another match.",
+        };
       }
-
+      // Only proceed with blockchain transactions after battle validation
       const connection = getSolanaConnection("confirmed");
       const escrow = await SolanaEscrow.getEscrowForChallenge(
         params.challenge.id,
         connection,
       );
+
       if (!escrow) {
-        throw new Error("Escrow not found");
+        throw {
+          code: "ESCROW_NOT_FOUND",
+          message: "Escrow not found",
+        };
       }
 
       const escrowAccount = await escrow.getEscrowAccount();
@@ -341,7 +397,7 @@ export class ChallengeService {
 
       const { transaction, closeAccount } = await escrow.withdrawFromEscrow(
         2 * params.challenge.wagerAmount,
-        new PublicKey(winner as string),
+        new PublicKey(winnerWallet as string),
       );
 
       // Get fresh blockhash
@@ -408,7 +464,7 @@ export class ChallengeService {
         expiresAt: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000),
       };
 
-      const { exp, ...challengeWithoutExp } = resolvedChallenge; // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { exp, ...challengeWithoutExp } = resolvedChallenge; //eslint-disable-line @typescript-eslint/no-unused-vars
       const newToken = signChallenge(challengeWithoutExp);
 
       const ttlSeconds = 10 * 365 * 24 * 60 * 60;
@@ -417,6 +473,7 @@ export class ChallengeService {
         `${params.challenge.id}`,
         "accepted",
       ) as string;
+
       await this.redisClient.hdel(
         `${params.challenge.id}`,
         "accepted",
@@ -428,21 +485,25 @@ export class ChallengeService {
       );
       await this.redisClient.expire(params.challenge.id, ttlSeconds);
 
+      await this.redisClient.del(resolutionKey);
+
       return {
         challenge: resolvedChallenge,
         token: newToken,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      await this.redisClient.hdel(
-        `${params.challenge.id}`,
-        "resolved",
-      );
-      await this.redisClient.hmset(
-        `${params.challenge.id}`,
-        "accepted",
-        oldToken,
-      );
+      if (oldToken) {
+        await this.redisClient.hdel(
+          `${params.challenge.id}`,
+          "resolved",
+        );
+        await this.redisClient.hmset(
+          `${params.challenge.id}`,
+          "accepted",
+          oldToken,
+        );
+      }
       throw error;
     }
   }
@@ -526,17 +587,24 @@ export class ChallengeService {
     try {
       challengeId = await req.nextUrl.pathname.split("/")[4];
     } catch (error) { //eslint-disable-line @typescript-eslint/no-unused-vars
-      throw new Error("Invalid request body");
+      throw {
+        code: "CHALLENGE_NOT_FOUND",
+        message: "Invalid request body",
+      };
     }
 
-    if (
-      !challengeId
-    ) {
-      throw new Error("Missing required fields");
+    if (!challengeId) {
+      throw {
+        code: "CHALLENGE_NOT_FOUND",
+        message: "Missing required fields",
+      };
     }
 
     if (typeof challengeId !== "string") {
-      throw new Error("Challenge ID is invalid");
+      throw {
+        code: "CHALLENGE_NOT_FOUND",
+        message: "Challenge ID is invalid",
+      };
     }
 
     return {
@@ -727,11 +795,15 @@ export class ChallengeService {
     }
 
     if (challenge.status !== "accepted") {
-      throw new Error("Challenge has not been excited");
+      throw new Error("Challenge has not been accepted");
     }
 
-    if (resolverWallet !== challenge.playerA.wallet) {
-      throw new Error("Only the challenger can resolve this challenge");
+    // Check if resolver is either the challenger or challengee
+    if (
+      resolverWallet !== challenge.playerA.wallet &&
+      resolverWallet !== challenge.playerB?.wallet
+    ) {
+      throw new Error("Only challenge participants can resolve this challenge");
     }
 
     return {

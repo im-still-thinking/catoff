@@ -8,6 +8,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { localAPIClient } from "@/adapters/xhr";
 import DeckSelector from "@/components/DeckSelector";
 import { SolanaEscrow } from '@/lib/solana/escrow';
+import ErrorModal from '@/components/ErrorModal';
 
 const MAX_RETRIES = 3;
 const CONFIRMATION_TIMEOUT = 30000;
@@ -16,23 +17,28 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
   const [playerTag, setPlayerTag] = useState("");
   const [playerData, setPlayerData] = useState<Player | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Card[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessingAccept, setIsProcessingAccept] = useState(false);
+  const [isProcessingDecline, setIsProcessingDecline] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState("");
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
   const { publicKey, connect, connection, sendTransaction } = useWallet();
 
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setErrorModalOpen(true);
+  };
 
-  // Add validation check function
   const validateChallenge = (): boolean => {
     setValidationError(null);
 
-    // Check if player tags match
     if (playerTag.trim() === challenge.playerA.tag) {
       setValidationError("You cannot accept a challenge with the same player tag as the challenger");
       return false;
     }
 
-    // Check if wallet addresses match
     if (publicKey?.toBase58() === challenge.playerA.wallet) {
       setValidationError("You cannot accept a challenge with the same wallet as the challenger");
       return false;
@@ -66,6 +72,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     escrow: SolanaEscrow,
     amount: number
   ): Promise<string> => {
+    setProcessingStatus("Setting wager...");
     const depositInstruction = await escrow.depositToEscrow(amount, publicKey!);
     const signature = await sendTransaction(depositInstruction);
 
@@ -86,31 +93,28 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
         throw new Error("Failed to fetch player data");
       }
       setPlayerData(response.data);
-    } catch (error) {
-      console.error("Error fetching player data:", error);
-      alert("Invalid player tag or unable to fetch data. Please try again.");
+    } catch (error) {  //eslint-disable-line @typescript-eslint/no-unused-vars
+      showError("Invalid player tag or unable to fetch data. Please try again.");
     }
   };
 
   const handleTagSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playerTag.trim()) {
-      alert("Please enter a player tag");
+      showError("Please enter a player tag");
       return;
     }
 
-    // Clean the tag by removing # if present at the start
     let cleanedTag = playerTag.trim();
     if (cleanedTag.startsWith('#')) {
       cleanedTag = cleanedTag.substring(1).trim();
-      setPlayerTag(cleanedTag); // Update the state with cleaned tag
+      setPlayerTag(cleanedTag);
     }
 
     if (!validateChallenge()) {
       return;
     }
 
-    // Make single API call with cleaned tag
     await fetchPlayerData(cleanedTag);
   };
 
@@ -135,16 +139,16 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     e.preventDefault();
 
     if (!challenge || !publicKey || selectedDeck.length !== 8) {
-      alert("Complete all fields before accepting the challenge.");
+      showError("Complete all fields before accepting the challenge.");
       return;
     }
 
-    // Validate before processing transaction
     if (!validateChallenge()) {
       return;
     }
 
-    setIsProcessing(true);
+    setIsProcessingAccept(true);
+    setProcessingStatus("Creating escrow...");
 
     try {
       const { escrow } = await getEscrow()
@@ -168,6 +172,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
         }
       }
 
+      setProcessingStatus("Finalizing challenge...");
       const response = await localAPIClient.post(`/challenge/${challenge.id}/accept`, {
         playerTag: playerTag.trim(),
         deck: selectedDeck,
@@ -176,31 +181,33 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       });
 
       if (response.status === 200) {
-        const { challenge } = response.data;
-        router.push(`/challenge/${challenge.id}/status?`);
+        // Add a small delay to ensure transaction is processed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Remove the query parameter from the redirect
+        router.push(`/challenge/${challenge.id}/status`);
       } else {
         throw new Error("Failed to accept the challenge.");
       }
     } catch (error) {
       console.error("Error accepting challenge:", error);
-      alert("An error occurred while accepting the challenge. Please try again.");
+      showError("An error occurred while accepting the challenge. Please try again.");
     } finally {
-      setIsProcessing(false);
+      setIsProcessingAccept(false);
+      setProcessingStatus("");
     }
   };
 
   const handleDecline = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log("challenge id", challenge.id)
-    console.log("token", token)
-
     if (!challenge?.id || !token) {
       console.error("Missing required data for declining challenge");
       return;
     }
 
-    setIsProcessing(true);
+    setIsProcessingDecline(true);
+    setProcessingStatus("Declining challenge...");
 
     try {
       const response = await localAPIClient.post(`/challenge/${challenge.id}/decline`, {
@@ -210,16 +217,15 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
       if (response.status === 200) {
         router.push("/");
       } else {
-        // Handle non-200 responses
         const errorMessage = response.data?.error || "Failed to decline the challenge.";
         throw new Error(errorMessage);
       }
     } catch (error) {
       console.error("Error declining challenge:", error);
-      // Show error in UI instead of using alert
-      setValidationError(error instanceof Error ? error.message : "Failed to decline the challenge. Please try again.");
+      showError(error instanceof Error ? error.message : "Failed to decline the challenge. Please try again.");
     } finally {
-      setIsProcessing(false);
+      setIsProcessingDecline(false);
+      setProcessingStatus("");
     }
   };
 
@@ -227,7 +233,7 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
     return (
       <button
         onClick={connect}
-        className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors"
+        className="w-full border-2 border-white rounded-xl font-supercell bg-yellow-500 text-white p-4 hover:bg-yellow-600 transition-colors"
       >
         Connect Wallet
       </button>
@@ -236,8 +242,14 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
 
   return (
     <div className="space-y-4">
+      <ErrorModal
+        isOpen={errorModalOpen}
+        onClose={() => setErrorModalOpen(false)}
+        message={errorMessage}
+      />
+
       {validationError && (
-        <div className="bg-red-500/20 border border-red-500 text-red-100 p-4 rounded-lg">
+        <div className="bg-red-500/20 border border-red-500 text-red-100 p-4 rounded-lg font-supercell">
           {validationError}
         </div>
       )}
@@ -272,17 +284,17 @@ export default function AcceptChallengeForm({ challenge, token }: AcceptChalleng
             <button
               onClick={handleAccept}
               className="flex-1 border-2 border-white rounded-xl font-supercell bg-green-500 text-white p-2 hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              disabled={selectedDeck.length !== 8 || isProcessing}
+              disabled={selectedDeck.length !== 8 || isProcessingAccept || isProcessingDecline}
             >
-              {isProcessing ? "Processing..." : "Accept Challenge"}
+              {isProcessingAccept ? processingStatus || "Processing..." : "Accept Challenge"}
             </button>
             <button
               type="button"
               onClick={handleDecline}
               className="flex-1 border-2 border-white rounded-xl font-supercell bg-red-500 text-white p-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isProcessing}
+              disabled={isProcessingAccept || isProcessingDecline}
             >
-              {isProcessing ? "Processing..." : "Decline Challenge"}
+              {isProcessingDecline ? processingStatus || "Processing..." : "Decline Challenge"}
             </button>
           </div>
         </div>

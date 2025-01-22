@@ -19,6 +19,7 @@ export default function CreateChallenge() {
   const [wagerAmount, setWagerAmount] = useState("0");
   const [shareableLink, setShareableLink] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState("");
   const { publicKey, connect, connection, sendTransaction } = useWallet();
 
   const fetchPlayerData = async (tag: string) => {
@@ -43,14 +44,12 @@ export default function CreateChallenge() {
       return;
     }
     
-    // Clean the tag by removing # if present at the start
     let cleanedTag = playerTag.trim();
     if (cleanedTag.startsWith('#')) {
       cleanedTag = cleanedTag.substring(1).trim();
-      setPlayerTag(cleanedTag); // Update the state with cleaned tag
+      setPlayerTag(cleanedTag);
     }
     
-    // Make single API call with cleaned tag
     await fetchPlayerData(cleanedTag);
   };
 
@@ -77,6 +76,7 @@ export default function CreateChallenge() {
 
   const createEscrow = async (): Promise<any> => {
     try {
+      setProcessingStatus("Creating escrow...");
       const response = await localAPIClient.post("/challenge/escrow", {
         publicKey: publicKey.toBase58()
       });
@@ -128,13 +128,14 @@ export default function CreateChallenge() {
     }
     catch (error) {
       console.error(error)
+      setProcessingStatus("");
     }
   }
 
   const setWager = async (
     challengeId: string,
   ): Promise<any> => {
-
+    setProcessingStatus("Setting wager...");
     const escrow = await SolanaEscrow.getEscrowForChallenge(challengeId, connection);
     if (!escrow) throw new Error(`Escrow for challenge ${challengeId} not found`);
 
@@ -177,8 +178,9 @@ export default function CreateChallenge() {
     setIsProcessing(true);
 
     try {
-      const { challengeId, escrowPubkey } = await createEscrow()
-      await setWager(challengeId)
+      const { challengeId, escrowPubkey } = await createEscrow();
+      await setWager(challengeId);
+      setProcessingStatus("Finalizing challenge...");
 
       const response = await localAPIClient.post("/challenge", {
         playerTag: playerTag.trim(),
@@ -200,6 +202,7 @@ export default function CreateChallenge() {
       alert("An error occurred while creating the challenge. Please try again.");
     } finally {
       setIsProcessing(false);
+      setProcessingStatus("");
     }
   };
 
@@ -258,7 +261,7 @@ export default function CreateChallenge() {
               disabled={selectedDeck.length !== 8 || isProcessing}
               className="w-full mt-2 border-2 border-white rounded-xl font-supercell bg-green-500 text-white p-2 hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {isProcessing ? "Processing..." : "Create Challenge"}
+              {isProcessing ? processingStatus || "Processing..." : "Create Challenge"}
             </button>
           </form>
         </div>

@@ -27,9 +27,9 @@ export async function GET(
     } catch (error: any) {
         return NextResponse.json({
             error: {
-                code: "CHALLENGE_GET_FAILED",
+                code: error.code || "CHALLENGE_GET_FAILED",
                 message: error.message,
             },
-        }, { status: 500 });
+        }, { status: error.code ? 404 : 500 });
     }
 }
