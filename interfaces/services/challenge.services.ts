@@ -341,7 +341,7 @@ export class ChallengeService {
 
       const { transaction, closeAccount } = await escrow.withdrawFromEscrow(
         2 * params.challenge.wagerAmount,
-        new PublicKey(params.challenge.playerA.wallet),
+        new PublicKey(winner as string),
       );
 
       // Get fresh blockhash
